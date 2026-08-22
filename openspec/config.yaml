@@ -1,32 +1,131 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+# ---------------------------------------------------------------------------
+# Project context: se inyecta en TODAS las instrucciones que recibe la IA
+# al generar proposal.md, specs/, design.md y tasks.md.
+# ---------------------------------------------------------------------------
+context: |
+  Proyecto: Cuentas Claras — aplicación web para dividir gastos entre amigos
+  de un viaje. Los usuarios agregan participantes, registran gastos indicando
+  quién pagó, y la app calcula cuánto debe cada quien y cómo saldar las deudas
+  con el mínimo de transferencias.
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+  Escenario de referencia (usar SIEMPRE como caso de prueba):
+  Ana, Beto, Carla y Diego van a Samaipata. Ana paga la cabaña (Bs. 800) y las
+  entradas a El Fuerte (Bs. 160), Beto paga la cena (Bs. 400), Carla la
+  gasolina (Bs. 240), Diego no paga nada. El resultado esperado de liquidación
+  incluye transferencias como "Diego → Ana: Bs. 400" y "Carla → Ana: Bs. 160".
 
-# Per-operation guidance (optional)
-# Add advisory guidance for how apply and archive work should be conducted.
-# This is separate from artifact rules above.
-# Example:
-#   operations:
-#     apply:
-#       guidance:
-#         - Keep test summaries concise
-#     archive:
-#       guidance:
-#         - Summarize the archive outcome before finishing
+  Stack técnico:
+  - Backend: Laravel 13.17, PHP 8.3 o superior.
+  - Frontend: Inertia.js + Tailwind CSS (sin API REST separada; los
+    controladores Laravel devuelven respuestas Inertia directamente a los
+    componentes de página).
+  - Arquitectura: MVC (Modelo - Vista - Controlador), con Form Requests para
+    validación y Policies para reglas de autorización cuando aplique.
+  - Base de datos: PostgreSQL.
+  - Autenticación: gestionada dentro del flujo de Inertia (patrón tipo
+    Laravel Breeze/Fortify), según convención estándar del stack.
+
+  Reglas de negocio críticas (no negociables):
+  - La suma de todos los balances de los participantes debe dar SIEMPRE
+    exactamente 0. Si no da 0, es un bug, normalmente de redondeo.
+  - Al dividir un gasto que no es exactamente divisible entre los deudores
+    (ej. Bs. 100 entre 3 personas), los centavos restantes los absorbe quien
+    pagó el gasto originalmente. Ejemplo: cada deudor debe Bs. 33,33 y quien
+    pagó absorbe el centavo sobrante.
+  - Balance positivo = le deben a ese participante. Balance negativo = ese
+    participante debe.
+  - Los datos deben persistir en PostgreSQL y sobrevivir al refrescar la
+    página; no se permite mantener el estado solo en memoria del navegador.
+
+  Convenciones de código:
+  - Seguir convenciones estándar de Laravel y PSR-12 (modelos en singular,
+    controladores en plural, nombres de tabla en snake_case plural).
+  - Los specs se versionan en Git junto al código, en la carpeta openspec/.
+  - Regla de oro: si cambia el entendimiento del negocio, primero se
+    actualiza el spec y después el código — nunca al revés.
+
+# ---------------------------------------------------------------------------
+# Per-artifact rules: constricciones específicas para cada tipo de artefacto
+# ---------------------------------------------------------------------------
+rules:
+  proposal:
+    - Indicar explícitamente cuál(es) de los 8 requisitos funcionales mínimos
+      del proyecto cubre la propuesta (participantes, gastos, edición,
+      saldos, liquidación, persistencia).
+    - Incluir una sección "Fuera de alcance" listando qué NO se va a
+      implementar en ese cambio en particular.
+
+  specs:
+    - Todo criterio de aceptación debe escribirse en formato
+      Dado / Cuando / Entonces. No se aceptan descripciones vagas del tipo
+      "la app divide los gastos".
+    - Toda especificación relacionada con montos o balances debe indicar
+      explícitamente cómo se maneja el redondeo de centavos.
+    - Enumerar los casos borde relevantes al requisito: 0 participantes,
+      gasto en Bs. 0 o negativo, montos que no dividen exacto, eliminar un
+      participante que ya tiene gastos asociados, nombres repetidos,
+      comportamiento al refrescar la página.
+
+  design:
+    - Especificar el modelo de datos en términos de modelos Eloquent: cómo
+      se representan Participante, Gasto y Deuda/Balance, y las relaciones
+      entre ellos (hasMany, belongsToMany, etc.).
+    - Indicar en qué capa vive cada regla de negocio (Modelo, Controlador,
+      Form Request, Policy, Service).
+    - Confirmar que la persistencia es en PostgreSQL, nunca en localStorage
+      ni en estado transitorio del frontend.
+
+  tasks:
+    - Dividir las tareas siguiendo el orden lógico de Laravel: migraciones,
+      modelos y relaciones, controladores/Form Requests, páginas Inertia,
+      seeder,pruebas.
+    - Cada tarea debe declarar explícitamente su alcance: por ejemplo
+      "solo migración", "solo modelo y relaciones", "solo controlador y
+      rutas",  "solo página Inertia", o "feature completo de extremo a
+      extremo". Apply solo debe ejecutar lo que el alcance declarado indica,
+      sin adelantarse a otras capas.
+    - Cada tarea debe indicar si corresponde a un requisito funcional
+      (ej. registrar un gasto) o no funcional (ej. rendimiento, validación
+      de datos, persistencia), porque el criterio de validación cambia
+      según el tipo.
+    - Si la tarea representa un caso de uso o funcionalidad verificable
+      (no solo una capa técnica aislada), debe incluir la creación o
+      actualización de un seeder con el escenario de Samaipata, para poder
+      probar y validar el resultado manualmente.
+    - Cada tarea debe quedar vinculada a al menos un criterio de aceptación
+      verificable del spec correspondiente.
+
+# ---------------------------------------------------------------------------
+# Per-operation guidance: orientación para las fases de apply y archive
+# ---------------------------------------------------------------------------
+operations:
+  apply:
+    guidance:
+      - Ejecutar únicamente el alcance definido en la tarea actual. Si la
+        tarea dice "solo migración", crear solo el archivo de migración —
+        no generar modelo, controlador ni vista en el mismo paso, aunque
+        técnicamente se pueda.
+      - NO ejecutar automáticamente comandos que modifiquen la base de
+        datos real (migrate, migrate:fresh, db:seed). Crear los archivos
+        y detenerse, pidiendo confirmación explícita al equipo antes de
+        correrlos.
+      - Cuando la tarea sea una funcionalidad o caso de uso específico (no
+        solo estructura técnica), crear o actualizar el seeder
+        correspondiente con el escenario de Samaipata (Ana, Beto, Carla,
+        Diego), para que el equipo pueda correr db:seed manualmente y
+        validar contra el criterio de aceptación del spec.
+      - Al terminar cada tarea, indicar explícitamente si cubrió un
+        requisito funcional o no funcional, y cuál criterio de aceptación
+        específico quedó resuelto.
+      - Después de implementar tareas relacionadas a cálculos de gastos o
+        balances, recordar al equipo verificar con el escenario de
+        Samaipata que la suma de todos los balances dé exactamente 0.
+
+  archive:
+    guidance:
+      - Confirmar que el spec archivado sigue siendo consistente con el
+        código realmente implementado antes de cerrar el cambio.
+      - Resumir brevemente qué criterios de aceptación quedaron cubiertos
+        por este cambio.
