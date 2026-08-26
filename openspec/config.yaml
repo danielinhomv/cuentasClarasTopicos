@@ -1,131 +1,175 @@
 schema: spec-driven
 
 # ---------------------------------------------------------------------------
-# Project context: se inyecta en TODAS las instrucciones que recibe la IA
-# al generar proposal.md, specs/, design.md y tasks.md.
+# Persona: se inyecta en TODAS las instrucciones que recibe la IA al
+# generar proposal.md, specs/, design.md y tasks.md.
+# ---------------------------------------------------------------------------
+persona: |
+  Sos un experto en Spec-Driven Development con OpenSpec: generás propuestas,
+  especificaciones, diseños y planes de tareas precisos, verificables y sin
+  ambigüedad, siguiendo estrictamente el formato y las reglas definidas en
+  este archivo. No asumís nada que no esté explícito en el spec ni avanzás
+  sobre alcance no autorizado.
+
+# ---------------------------------------------------------------------------
+# Project context
 # ---------------------------------------------------------------------------
 context: |
   Proyecto: Cuentas Claras — aplicación web para dividir gastos entre amigos
   de un viaje. Los usuarios agregan participantes, registran gastos indicando
-  quién pagó, y la app calcula cuánto debe cada quien y cómo saldar las deudas
-  con el mínimo de transferencias.
+  quién pagó, y la app calcula cuánto debe cada quien y cómo saldar las
+  deudas con el mínimo de transferencias.
 
-  Escenario de referencia (usar SIEMPRE como caso de prueba):
+  Escenario de referencia (usar SIEMPRE como caso de prueba y en seeders):
   Ana, Beto, Carla y Diego van a Samaipata. Ana paga la cabaña (Bs. 800) y las
   entradas a El Fuerte (Bs. 160), Beto paga la cena (Bs. 400), Carla la
-  gasolina (Bs. 240), Diego no paga nada. El resultado esperado de liquidación
-  incluye transferencias como "Diego → Ana: Bs. 400" y "Carla → Ana: Bs. 160".
+  gasolina (Bs. 240), Diego no paga nada. El resultado esperado de
+  liquidación incluye transferencias como "Diego → Ana: Bs. 400" y
+  "Carla → Ana: Bs. 160".
+
+  Alcance de esta fase: SOLO BACKEND. No generar vistas, componentes Inertia,
+  Blade ni ningún artefacto de presentación. El frontend (Inertia + Tailwind)
+  se aborda en una fase posterior, con su propio spec. Todo lo demás —
+  migraciones, modelos, relaciones, controladores, Form Requests, Policies,
+  Services, rutas, seeders y pruebas— sí está dentro de esta fase.
+
+  Casos de uso del backend (fuente de verdad para specs y tasks; cada
+  proposal/spec/tasks debe mapear a uno o más de estos):
+    1. Gestionar participantes (alta, listado, edición, eliminación)
+    2. Gestionar gastos (alta, edición, eliminación)
+    3. Excluir participantes de un gasto
+    4. Calcular saldos
+    5. Calcular liquidación
+    6. Validar consistencia de cálculos (casos borde e invariante de balance)
+    7. Gestionar viaje (alta, listado, detalle)
+    8. Autenticar usuario (registro, login, restricción de acceso)
 
   Stack técnico:
   - Backend: Laravel 13.17, PHP 8.3 o superior.
-  - Frontend: Inertia.js + Tailwind CSS (sin API REST separada; los
-    controladores Laravel devuelven respuestas Inertia directamente a los
-    componentes de página).
-  - Arquitectura: MVC (Modelo - Vista - Controlador), con Form Requests para
-    validación y Policies para reglas de autorización cuando aplique.
-  - Base de datos: PostgreSQL.
-  - Autenticación: gestionada dentro del flujo de Inertia (patrón tipo
-    Laravel Breeze/Fortify), según convención estándar del stack.
+  - Frontend (fase posterior, fuera de alcance por ahora): Inertia.js +
+    Tailwind CSS, sin API REST separada.
+  - Arquitectura: MVC con Form Requests para validación, Policies para
+    autorización y Services para lógica de negocio no trivial (cálculo de
+    saldos y liquidación).
+  - Base de datos: PostgreSQL. La persistencia nunca es en localStorage ni
+    en estado transitorio del frontend.
+  - Autenticación: patrón estándar del stack (tipo Laravel Breeze/Fortify),
+    integrada con Inertia cuando se aborde esa fase; por ahora, backend de
+    auth (modelos, migraciones, rutas, controladores) sí corresponde.
 
   Reglas de negocio críticas (no negociables):
   - La suma de todos los balances de los participantes debe dar SIEMPRE
     exactamente 0. Si no da 0, es un bug, normalmente de redondeo.
   - Al dividir un gasto que no es exactamente divisible entre los deudores
     (ej. Bs. 100 entre 3 personas), los centavos restantes los absorbe quien
-    pagó el gasto originalmente. Ejemplo: cada deudor debe Bs. 33,33 y quien
-    pagó absorbe el centavo sobrante.
+    pagó el gasto originalmente (ej. cada deudor debe Bs. 33,33 y el pagador
+    absorbe el centavo sobrante).
   - Balance positivo = le deben a ese participante. Balance negativo = ese
     participante debe.
-  - Los datos deben persistir en PostgreSQL y sobrevivir al refrescar la
-    página; no se permite mantener el estado solo en memoria del navegador.
 
   Convenciones de código:
-  - Seguir convenciones estándar de Laravel y PSR-12 (modelos en singular,
-    controladores en plural, nombres de tabla en snake_case plural).
+  - Convenciones estándar de Laravel y PSR-12 (modelos en singular,
+    controladores en plural, tablas en snake_case plural).
+  - Rutas en web.php con nombres (ej. 'participantes.index') y agrupadas por
+    funcionalidad (ej. grupo 'participantes', grupo 'gastos').
   - Los specs se versionan en Git junto al código, en la carpeta openspec/.
   - Regla de oro: si cambia el entendimiento del negocio, primero se
     actualiza el spec y después el código — nunca al revés.
 
 # ---------------------------------------------------------------------------
-# Per-artifact rules: constricciones específicas para cada tipo de artefacto
+# Per-artifact rules
 # ---------------------------------------------------------------------------
 rules:
   proposal:
-    - Indicar explícitamente cuál(es) de los 8 requisitos funcionales mínimos
-      del proyecto cubre la propuesta (participantes, gastos, edición,
-      saldos, liquidación, persistencia).
-    - Incluir una sección "Fuera de alcance" listando qué NO se va a
-      implementar en ese cambio en particular.
+    - Indicar explícitamente cuál(es) de los 8 casos de uso del backend
+      (ver context) cubre la propuesta.
+    - Confirmar que el alcance es solo backend; incluir una sección
+      "Fuera de alcance" que mencione explícitamente "vistas / frontend
+      Inertia" como excluidas de este cambio, además de cualquier otro
+      límite relevante al caso de uso.
 
   specs:
-    - Todo criterio de aceptación debe escribirse en formato
+    - Cada spec debe corresponder a uno de los 8 casos de uso del backend
+      definidos en el context.
+    - Todo criterio de aceptación se escribe en formato
       Dado / Cuando / Entonces. No se aceptan descripciones vagas del tipo
       "la app divide los gastos".
     - Toda especificación relacionada con montos o balances debe indicar
       explícitamente cómo se maneja el redondeo de centavos.
-    - Enumerar los casos borde relevantes al requisito: 0 participantes,
+    - Enumerar los casos borde relevantes al caso de uso: 0 participantes,
       gasto en Bs. 0 o negativo, montos que no dividen exacto, eliminar un
-      participante que ya tiene gastos asociados, nombres repetidos,
-      comportamiento al refrescar la página.
+      participante o viaje que ya tiene gastos asociados, nombres
+      repetidos, acceso sin autenticar, y comportamiento al refrescar la
+      página (debe reflejar lo persistido en PostgreSQL).
 
   design:
-    - Especificar el modelo de datos en términos de modelos Eloquent: cómo
-      se representan Participante, Gasto y Deuda/Balance, y las relaciones
-      entre ellos (hasMany, belongsToMany, etc.).
-    - Indicar en qué capa vive cada regla de negocio (Modelo, Controlador,
-      Form Request, Policy, Service).
-    - Confirmar que la persistencia es en PostgreSQL, nunca en localStorage
-      ni en estado transitorio del frontend.
+    - Especificar el modelo de datos en términos de modelos Eloquent:
+      Usuario, Viaje, Participante, Gasto y su relación con Balance/Deuda
+      (calculada, no necesariamente persistida), y las relaciones entre
+      ellos (hasMany, belongsToMany, etc.).
+    - Indicar en qué capa vive cada regla de negocio (Modelo, Form Request,
+      Policy, Service, Controlador).
+    - No incluir ningún artefacto de vista (Inertia/Vue/Blade); el diseño
+      se detiene en controladores y su contrato de datos de salida.
+    - Confirmar persistencia en PostgreSQL.
+    - Las rutas van agrupadas por funcionalidad y con nombres (ej.
+      'participantes.index', 'gastos.store').
 
   tasks:
-    - Dividir las tareas siguiendo el orden lógico de Laravel: migraciones,
-      modelos y relaciones, controladores/Form Requests, páginas Inertia,
-      seeder,pruebas.
-    - Cada tarea debe declarar explícitamente su alcance: por ejemplo
-      "solo migración", "solo modelo y relaciones", "solo controlador y
-      rutas",  "solo página Inertia", o "feature completo de extremo a
-      extremo". Apply solo debe ejecutar lo que el alcance declarado indica,
-      sin adelantarse a otras capas.
-    - Cada tarea debe indicar si corresponde a un requisito funcional
-      (ej. registrar un gasto) o no funcional (ej. rendimiento, validación
-      de datos, persistencia), porque el criterio de validación cambia
+    - Dividir las tareas siguiendo el orden lógico de Laravel: migraciones
+      → modelos y relaciones → Form Requests/Policies → controladores o
+      Services → rutas → seeder → pruebas. Nunca incluir tareas de vista.
+    - Cada tarea declara su alcance explícitamente, usando una de estas
+      etiquetas: "solo migración", "solo modelo y relaciones", "solo
+      Form Request/Policy", "solo controlador y rutas", "solo Service",
+      "solo seeder", "solo pruebas", o "feature backend completo"
+      (cuando una tarea es "feature backend completo", incluye TODA la
+      cadena: migración, modelo/relaciones, Form Request/Policy si aplica,
+      controlador/Service, rutas, seeder y pruebas — sin vista).
+    - Cada tarea indica si corresponde a un requisito funcional (uno de los
+      8 casos de uso) o no funcional (ej. seeder de datos de prueba,
+      validación, persistencia), porque el criterio de validación cambia
       según el tipo.
-    - Si la tarea representa un caso de uso o funcionalidad verificable
-      (no solo una capa técnica aislada), debe incluir la creación o
-      actualización de un seeder con el escenario de Samaipata, para poder
-      probar y validar el resultado manualmente.
-    - Cada tarea debe quedar vinculada a al menos un criterio de aceptación
+    - Toda tarea que cubra un caso de uso verificable debe incluir la
+      creación o actualización del seeder con el escenario de Samaipata,
+      y al menos una prueba automatizada (Pest/PHPUnit) que verifique su
+      criterio de aceptación.
+    - Cada tarea queda vinculada a al menos un criterio de aceptación
       verificable del spec correspondiente.
 
 # ---------------------------------------------------------------------------
-# Per-operation guidance: orientación para las fases de apply y archive
+# Per-operation guidance
 # ---------------------------------------------------------------------------
 operations:
   apply:
     guidance:
       - Ejecutar únicamente el alcance definido en la tarea actual. Si la
         tarea dice "solo migración", crear solo el archivo de migración —
-        no generar modelo, controlador ni vista en el mismo paso, aunque
-        técnicamente se pueda.
+        no generar modelo, controlador ni ruta en el mismo paso, aunque
+        técnicamente se pueda. Nunca generar vistas/Inertia bajo ningún
+        alcance, sin importar la etiqueta de la tarea.
       - NO ejecutar automáticamente comandos que modifiquen la base de
         datos real (migrate, migrate:fresh, db:seed). Crear los archivos
         y detenerse, pidiendo confirmación explícita al equipo antes de
         correrlos.
-      - Cuando la tarea sea una funcionalidad o caso de uso específico (no
-        solo estructura técnica), crear o actualizar el seeder
-        correspondiente con el escenario de Samaipata (Ana, Beto, Carla,
-        Diego), para que el equipo pueda correr db:seed manualmente y
-        validar contra el criterio de aceptación del spec.
-      - Al terminar cada tarea, indicar explícitamente si cubrió un
-        requisito funcional o no funcional, y cuál criterio de aceptación
-        específico quedó resuelto.
-      - Después de implementar tareas relacionadas a cálculos de gastos o
-        balances, recordar al equipo verificar con el escenario de
-        Samaipata que la suma de todos los balances dé exactamente 0.
+      - Cuando la tarea sea "feature backend completo" para un caso de uso
+        verificable, generar en el mismo cambio: migración, modelo y
+        relaciones, Form Request/Policy si aplica, controlador o Service,
+        rutas nombradas y agrupadas, seeder con el escenario de Samaipata,
+        y al menos una prueba automatizada que valide el criterio de
+        aceptación del spec.
+      - Al terminar cada tarea, indicar explícitamente qué caso de uso
+        cubrió, si fue requisito funcional o no funcional, y cuál criterio
+        de aceptación específico quedó resuelto.
+      - Después de implementar tareas de cálculos de gastos o balances,
+        recordar al equipo verificar con el escenario de Samaipata que la
+        suma de todos los balances dé exactamente 0.
 
   archive:
     guidance:
       - Confirmar que el spec archivado sigue siendo consistente con el
         código realmente implementado antes de cerrar el cambio.
+      - Confirmar que no se coló ningún artefacto de vista fuera de
+        alcance.
       - Resumir brevemente qué criterios de aceptación quedaron cubiertos
         por este cambio.
