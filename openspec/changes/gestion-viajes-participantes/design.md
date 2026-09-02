@@ -15,9 +15,11 @@ Tras la implementación de la autenticación de usuarios (`User`), el sistema re
 - Proveer el seeder oficial del escenario de referencia **Samaipata** (Viaje con Ana, Beto, Carla y Diego).
 
 **Non-Goals:**
-- No crear componentes de vista (Blade, Inertia/Vue, CSS).
 - No modelar aún la tabla `gastos` ni la tabla pivote de exclusiones (se modelarán en el Módulo 3).
 - No implementar lógica de cálculo de saldos ni algoritmo de liquidación (Módulo 4).
+- No persistir un campo `estado` de viaje en PostgreSQL (el estado visible en UI es derivado).
+
+> **Ajuste de alcance (apply):** el proposal original era solo backend. Por instrucción explícita del equipo en apply, este change también cubre la interfaz Inertia + Vue + Tailwind, alineada con Jetstream.
 
 ## Decisions
 
@@ -105,6 +107,24 @@ El `DatabaseSeeder.php` poblará:
 1. Usuario propietario de prueba (`ana@example.com`).
 2. Viaje: `"Viaje a Samaipata"` con descripción `"Fin de semana con amigos"`.
 3. 4 Participantes: `"Ana"`, `"Beto"`, `"Carla"`, `"Diego"`.
+
+### 7. Presentación Inertia (UI)
+
+Stack: Laravel Jetstream + Inertia.js + Vue 3 + Tailwind, reutilizando `AppLayout`, `FormSection`, `TextInput`, `PrimaryButton`, `DangerButton`, `SecondaryButton`, `InputLabel`, `InputError` y `ConfirmationModal`. Sin paleta ni tipografía distintas a las del resto de la app.
+
+**Rutas de pantalla (además de las mutaciones del backend):**
+- `GET /viajes/create` → `viajes.create` (formulario de alta)
+- `GET /viajes/{viaje}/edit` → `viajes.edit` (formulario de edición)
+- Los `GET` de listado y detalle (`viajes.index`, `viajes.show`) renderizan páginas Inertia; `POST`/`PUT`/`DELETE` redirigen con flash Jetstream (`flash.banner` / `flash.bannerStyle`).
+- La gestión de participantes vive en el detalle del viaje. `viajes.participantes.index` redirige a `viajes.show` para no duplicar pantallas.
+
+**Pantallas:**
+1. **Listado (`Viajes/Index`)** — búsqueda por nombre (debounce), filtro de estado derivado, paginación (10 por página). Desktop: tabla. Mobile: cards. Badge de estado: `Sin participantes` (0) / `Con participantes` (≥1).
+2. **Alta/edición (`Viajes/Create`, `Viajes/Edit`)** — `nombre` obligatorio (min 2, max 150) y `descripcion` opcional. Validación en cliente al escribir; errores de servidor vía `useForm`. CTA primario alineado a Jetstream.
+3. **Detalle (`Viajes/Show`)** — resumen del viaje, conteo, acciones rápidas (editar, eliminar, agregar participante). Lista filtrable de participantes, alta inline, edición en modal, eliminación con `ConfirmationModal`. Duplicados: el backend rechaza; la UI deshabilita agregar si el nombre (trim, case-insensitive) ya está en la lista cargada.
+4. **Estados UX** — empty state con CTA; skeleton/`processing` en envíos; confirmación destructiva de viaje (cascada de participantes) y de participante; banner de éxito/error; labels asociados, foco visible (`focus:ring`) y layout mobile-first (`px-4`, tabla → cards).
+
+**Controladores:** respuestas Inertia (no JSON API). Las policies y Form Requests del backend no cambian.
 
 ## Risks / Trade-offs
 
