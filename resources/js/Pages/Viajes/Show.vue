@@ -24,6 +24,10 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    bitacora: {
+        type: Array,
+        default: () => [],
+    },
 });
 
 // Pestaña Activa
@@ -62,6 +66,11 @@ const gastoForm = useForm({
     pagador_id: '',
     excluidos: [],
 });
+
+const pagoForm = useForm({
+    monto: '',
+});
+const payingDebt = ref(null);
 
 // Estado Tipo de Cambio
 const modalTipoCambioOpen = ref(false);
@@ -165,6 +174,73 @@ const formatDate = (val) => {
         day: 'numeric',
     });
 };
+
+const formatDateTime = (val) => {
+    if (!val) return '—';
+    return new Date(val).toLocaleString('es-BO', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+};
+
+const etiquetasBitacora = {
+    concepto: 'Concepto',
+    monto: 'Monto',
+    moneda: 'Moneda',
+    fecha: 'Fecha',
+    pagador_nombre: 'Pagador',
+    pagador_id: 'Pagador',
+    incluidos: 'Incluidos',
+    excluidos: 'Excluidos',
+};
+
+const camposOcultosBitacora = new Set(['pagador_id', 'tipo_cambio']);
+
+const formatearValorBitacora = (clave, valor) => {
+    if (valor === null || valor === undefined) return '—';
+    if (clave === 'incluidos' || clave === 'excluidos') {
+        if (!Array.isArray(valor) || valor.length === 0) return 'ninguno';
+        return valor.map((p) => p.nombre).join(', ');
+    }
+    if (clave === 'monto') return formatCurrency(valor);
+    return String(valor);
+};
+
+const clavesSnapshot = (datos) =>
+    Object.keys(datos || {}).filter((clave) => !camposOcultosBitacora.has(clave));
+
+const camposCambiados = (entrada) => {
+    const keys = new Set([
+        ...Object.keys(entrada.datos_antes || {}),
+        ...Object.keys(entrada.datos_despues || {}),
+    ]);
+    camposOcultosBitacora.forEach((clave) => keys.delete(clave));
+    return [...keys];
+};
+
+const openPagoForm = (deuda) => {
+    payingDebt.value = deuda;
+    pagoForm.monto = deuda.monto_pendiente;
+    pagoForm.clearErrors();
+};
+
+const closePagoForm = () => {
+    payingDebt.value = null;
+    pagoForm.reset();
+};
+
+const submitPago = () => {
+    if (!payingDebt.value) return;
+    pagoForm.post(route('liquidaciones.pagos.store', payingDebt.value.id), {
+        preserveScroll: true,
+        onSuccess: () => closePagoForm(),
+    });
+};
+
+const deudasPendientes = computed(() => (props.liquidacion ?? []).filter((d) => !d.liquidada && Number(d.monto_pendiente) > 0));
 
 // Acciones Participantes
 const submitParticipant = () => {
@@ -472,6 +548,20 @@ const copyCode = () => {
                     </button>
 
                     <button
+                        v-if="isCreator"
+                        @click="activeTab = 'bitacora'"
+                        :class="[
+                            'px-5 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer',
+                            activeTab === 'bitacora'
+                                ? 'bg-amber-500/15 text-amber-300 border border-amber-500/40 shadow-lg shadow-amber-950/40'
+                                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
+                        ]"
+                    >
+                        <span>📋 Bitácora</span>
+                        <span class="text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300">{{ (bitacora || []).length }}</span>
+                    </button>
+
+                    <button
                         @click="activeTab = 'participantes'"
                         :class="[
                             'px-5 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer',
@@ -589,6 +679,21 @@ const copyCode = () => {
                                     <p v-if="gasto.moneda && gasto.moneda !== 'BOB'" class="text-[11px] text-zinc-400 font-mono mt-0.5">
                                         {{ getConsolidadoBs(gasto) }}
                                     </p>
+                                    <p v-if="gasto.tiene_ajuste_efectivo" class="text-[11px] text-amber-300/90 mt-1">
+                                        Original {{ formatGastoOriginal(gasto) }} · ajuste a efectivo Bs 0,50
+                                    </p>
+                                    <ul v-if="gasto.tiene_ajuste_efectivo && gasto.cuotas_efectivo?.length" class="mt-1 space-y-0.5">
+                                        <li
+                                            v-for="cuota in gasto.cuotas_efectivo"
+                                            :key="cuota.id"
+                                            class="text-[11px] text-zinc-400 font-mono"
+                                        >
+                                            {{ cuota.nombre }}: {{ formatCurrency(cuota.cuota_final) }}
+                                            <span v-if="cuota.ajuste" class="text-amber-400/80">
+                                                ({{ cuota.ajuste > 0 ? '+' : '' }}{{ formatCurrency(cuota.ajuste) }})
+                                            </span>
+                                        </li>
+                                    </ul>
                                 </div>
 
                                 <div class="flex items-center gap-1.5">
@@ -723,7 +828,6 @@ const copyCode = () => {
                             </div>
                         </div>
 
-                        <!-- Si no hay deudas que saldar -->
                         <div v-if="liquidacion.length === 0" class="py-12 text-center">
                             <div class="mx-auto w-14 h-14 rounded-2xl bg-emerald-950/60 border border-emerald-500/40 flex items-center justify-center text-emerald-400 mb-4 shadow-lg shadow-emerald-950/50">
                                 <svg class="size-7" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
@@ -736,44 +840,156 @@ const copyCode = () => {
                             </p>
                         </div>
 
-                        <!-- Tarjetas de Transferencia con Resplandor Neón -->
-                        <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div
-                                v-for="(trans, idx) in liquidacion"
-                                :key="idx"
-                                class="bg-zinc-950/80 border border-zinc-800 hover:border-violet-500/50 rounded-2xl p-5 shadow-xl hover:shadow-violet-950/30 transition-all flex flex-col justify-between group"
-                            >
-                                <div class="flex items-center justify-between gap-4">
-                                    <!-- Deudor -->
-                                    <div class="flex-1">
-                                        <span class="text-[10px] uppercase font-bold text-rose-400 tracking-wider">Deudor (Paga)</span>
-                                        <p class="text-base font-black text-zinc-100 mt-0.5 truncate">{{ trans.deudor_nombre }}</p>
-                                    </div>
+                        <div v-else class="space-y-6">
+                            <div v-if="deudasPendientes.length === 0" class="py-6 text-center rounded-2xl bg-emerald-950/30 border border-emerald-500/30">
+                                <h4 class="text-sm font-bold text-emerald-300">Todas las deudas están liquidadas</h4>
+                                <p class="text-xs text-zinc-400 mt-1">Los pagos registrados cubren el total de cada transferencia.</p>
+                            </div>
 
-                                    <!-- Flecha de Transferencia -->
-                                    <div class="flex flex-col items-center px-2">
-                                        <div class="w-10 h-10 rounded-xl bg-violet-950/70 border border-violet-500/40 flex items-center justify-center text-violet-300 shadow-md shadow-violet-950/60 group-hover:scale-105 transition-transform">
-                                            <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
-                                                <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
-                                            </svg>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div
+                                    v-for="trans in liquidacion"
+                                    :key="trans.id || `${trans.deudor_id}-${trans.acreedor_id}`"
+                                    class="bg-zinc-950/80 border rounded-2xl p-5 shadow-xl transition-all flex flex-col justify-between"
+                                    :class="trans.liquidada ? 'border-emerald-500/30' : 'border-zinc-800 hover:border-violet-500/50'"
+                                >
+                                    <div class="flex items-center justify-between gap-4">
+                                        <div class="flex-1">
+                                            <span class="text-[10px] uppercase font-bold text-rose-400 tracking-wider">Deudor (Paga)</span>
+                                            <p class="text-base font-black text-zinc-100 mt-0.5 truncate">{{ trans.deudor_nombre }}</p>
+                                        </div>
+                                        <div class="flex flex-col items-center px-2">
+                                            <div class="w-10 h-10 rounded-xl bg-violet-950/70 border border-violet-500/40 flex items-center justify-center text-violet-300 shadow-md">
+                                                <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                                                </svg>
+                                            </div>
+                                        </div>
+                                        <div class="flex-1 text-right">
+                                            <span class="text-[10px] uppercase font-bold text-emerald-400 tracking-wider">Acreedor (Recibe)</span>
+                                            <p class="text-base font-black text-zinc-100 mt-0.5 truncate">{{ trans.acreedor_nombre }}</p>
                                         </div>
                                     </div>
 
-                                    <!-- Acreedor -->
-                                    <div class="flex-1 text-right">
-                                        <span class="text-[10px] uppercase font-bold text-emerald-400 tracking-wider">Acreedor (Recibe)</span>
-                                        <p class="text-base font-black text-zinc-100 mt-0.5 truncate">{{ trans.acreedor_nombre }}</p>
+                                    <div class="mt-4 pt-3 border-t border-zinc-800/80 space-y-2 text-xs">
+                                        <div class="flex items-center justify-between text-zinc-400">
+                                            <span>Original</span>
+                                            <span class="font-mono text-zinc-200">{{ formatCurrency(trans.monto_original ?? trans.monto) }}</span>
+                                        </div>
+                                        <div class="flex items-center justify-between text-zinc-400">
+                                            <span>Pagado</span>
+                                            <span class="font-mono text-cyan-300">{{ formatCurrency(trans.monto_pagado ?? 0) }}</span>
+                                        </div>
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-zinc-400">Pendiente</span>
+                                            <span class="text-lg font-black text-cyan-300 font-mono">
+                                                {{ formatCurrency(trans.monto_pendiente ?? trans.monto) }}
+                                            </span>
+                                        </div>
                                     </div>
-                                </div>
 
-                                <div class="mt-4 pt-3 border-t border-zinc-800/80 flex items-center justify-between">
-                                    <span class="text-xs text-zinc-400">Monto de transferencia</span>
-                                    <span class="text-lg font-black text-cyan-300 font-mono">
-                                        {{ formatCurrency(trans.monto) }}
-                                    </span>
+                                    <div class="mt-4 flex items-center justify-between gap-2">
+                                        <span
+                                            v-if="trans.liquidada"
+                                            class="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-500/40"
+                                        >
+                                            Liquidada
+                                        </span>
+                                        <PrimaryButton
+                                            v-else
+                                            type="button"
+                                            class="w-full justify-center"
+                                            @click="openPagoForm(trans)"
+                                        >
+                                            Registrar pago
+                                        </PrimaryButton>
+                                    </div>
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- ============================================================== -->
+                <!-- TAB: BITÁCORA (solo anfitrión) -->
+                <!-- ============================================================== -->
+                <div v-if="isCreator" v-show="activeTab === 'bitacora'" class="space-y-4">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-white font-bold text-lg">Historial de cambios</h3>
+                    </div>
+                    <p class="text-zinc-500 text-sm">Registro de creación, edición y eliminación de gastos. Solo lectura.</p>
+
+                    <div v-if="!(bitacora || []).length" class="bg-zinc-900/60 border border-dashed border-zinc-800 rounded-2xl p-10 text-center">
+                        <p class="text-zinc-500 text-sm">Aún no hay movimientos en la bitácora de este viaje.</p>
+                    </div>
+
+                    <div v-else class="space-y-3">
+                        <article
+                            v-for="entrada in bitacora"
+                            :key="entrada.id"
+                            class="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-4 space-y-3"
+                        >
+                            <div class="flex flex-wrap items-start justify-between gap-2">
+                                <div>
+                                    <p class="text-white font-semibold text-sm">
+                                        {{ entrada.actor_nombre || entrada.user?.name || 'Usuario desconocido' }}
+                                        <span class="text-zinc-400 font-normal">
+                                            {{ entrada.accion === 'crear' ? 'creó' : entrada.accion === 'editar' ? 'editó' : 'eliminó' }}
+                                            el gasto
+                                            <span class="text-zinc-200">{{ entrada.gasto_concepto ?? 'sin concepto' }}</span>
+                                        </span>
+                                    </p>
+                                    <p class="text-zinc-500 text-xs mt-1">{{ formatDateTime(entrada.created_at) }}</p>
+                                </div>
+                                <span
+                                    class="text-xs font-bold px-2 py-1 rounded-lg uppercase"
+                                    :class="{
+                                        'bg-emerald-500/15 text-emerald-400': entrada.accion === 'crear',
+                                        'bg-amber-500/15 text-amber-400': entrada.accion === 'editar',
+                                        'bg-red-500/15 text-red-400': entrada.accion === 'eliminar',
+                                    }"
+                                >
+                                    {{ entrada.accion }}
+                                </span>
+                            </div>
+
+                            <div v-if="entrada.accion === 'crear'" class="text-sm text-zinc-400 space-y-1">
+                                <p v-for="clave in clavesSnapshot(entrada.datos_despues)" :key="clave">
+                                    <span class="text-zinc-500">{{ etiquetasBitacora[clave] || clave }}:</span>
+                                    {{ formatearValorBitacora(clave, entrada.datos_despues[clave]) }}
+                                </p>
+                            </div>
+
+                            <div v-else-if="entrada.accion === 'eliminar'" class="text-sm text-zinc-400 space-y-1">
+                                <p v-for="clave in clavesSnapshot(entrada.datos_antes)" :key="clave">
+                                    <span class="text-zinc-500">{{ etiquetasBitacora[clave] || clave }}:</span>
+                                    {{ formatearValorBitacora(clave, entrada.datos_antes[clave]) }}
+                                </p>
+                            </div>
+
+                            <div v-else class="overflow-x-auto">
+                                <table class="w-full text-sm">
+                                    <thead>
+                                        <tr class="text-zinc-500 text-xs uppercase tracking-wide">
+                                            <th class="text-left py-1 pr-3">Campo</th>
+                                            <th class="text-left py-1 pr-3">Antes</th>
+                                            <th class="text-left py-1">Después</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr
+                                            v-for="clave in camposCambiados(entrada)"
+                                            :key="clave"
+                                            class="border-t border-zinc-800 text-zinc-300"
+                                        >
+                                            <td class="py-2 pr-3 text-zinc-500">{{ etiquetasBitacora[clave] || clave }}</td>
+                                            <td class="py-2 pr-3">{{ formatearValorBitacora(clave, entrada.datos_antes?.[clave]) }}</td>
+                                            <td class="py-2">{{ formatearValorBitacora(clave, entrada.datos_despues?.[clave]) }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </article>
                     </div>
                 </div>
 
@@ -789,7 +1005,7 @@ const copyCode = () => {
                                 <h3 class="font-bold text-base text-zinc-100">Invitar Amigos</h3>
                             </div>
                             <p class="text-xs text-zinc-400 leading-relaxed">
-                                Para que tus amigos se sumen al viaje y sus consumos se calculen automáticamente, comparte este código. Cada usuario registrado debe ingresarlo en "Unirme con código".
+                                Si tus amigos tienen cuenta, comparte este código para que se unan desde "Unirme con código". También puedes agregar participantes manualmente por nombre (sin necesidad de cuenta).
                             </p>
 
                             <div class="p-4 rounded-xl bg-zinc-950 border border-cyan-500/30 text-center space-y-1.5 shadow-inner">
@@ -844,6 +1060,9 @@ const copyCode = () => {
                                         <span v-if="p.user_id === viaje.user_id" class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950/80 text-cyan-300 border border-cyan-500/30 font-semibold">
                                             Creador
                                         </span>
+                                        <span v-else-if="!p.user_id" class="text-[10px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 border border-zinc-700 font-semibold">
+                                            Sin cuenta
+                                        </span>
                                     </div>
 
                                     <div class="flex items-center gap-1">
@@ -868,6 +1087,34 @@ const copyCode = () => {
                                         </button>
                                     </div>
                                 </div>
+                            </div>
+
+                            <!-- Alta manual por nombre (solo propietario) -->
+                            <div v-if="isCreator" class="border-t border-zinc-800 pt-4 mt-2 space-y-3">
+                                <div>
+                                    <h4 class="text-sm font-bold text-zinc-100">Agregar participante</h4>
+                                    <p class="text-xs text-zinc-400 mt-0.5">Ingresa el nombre de quien participará en el viaje. No necesita tener cuenta.</p>
+                                </div>
+                                <form @submit.prevent="submitParticipant" class="flex flex-col sm:flex-row gap-2">
+                                    <div class="flex-1">
+                                        <TextInput
+                                            v-model="addParticipantForm.nombre"
+                                            type="text"
+                                            class="w-full text-sm"
+                                            placeholder="Ej. Diego, Carla..."
+                                            autocomplete="off"
+                                            :disabled="addParticipantForm.processing"
+                                        />
+                                        <p v-if="addParticipantError" class="text-[11px] text-amber-400 mt-1">{{ addParticipantError }}</p>
+                                    </div>
+                                    <PrimaryButton
+                                        type="submit"
+                                        :disabled="!!addParticipantError || !addParticipantForm.nombre.trim() || addParticipantForm.processing"
+                                        class="shrink-0 justify-center"
+                                    >
+                                        Agregar
+                                    </PrimaryButton>
+                                </form>
                             </div>
                         </div>
                     </div>
@@ -1159,6 +1406,54 @@ const copyCode = () => {
                 </DangerButton>
             </template>
         </ConfirmationModal>
+
+        <DialogModal :show="!!payingDebt" @close="closePagoForm" max-width="md">
+            <template #title>
+                <div class="flex items-center gap-2">
+                    <span class="text-cyan-400">💳</span>
+                    <span>Registrar pago de deuda</span>
+                </div>
+            </template>
+            <template #content>
+                <form v-if="payingDebt" @submit.prevent="submitPago" class="space-y-4">
+                    <p class="text-xs text-zinc-400">
+                        {{ payingDebt.deudor_nombre }} → {{ payingDebt.acreedor_nombre }}
+                    </p>
+                    <div class="grid grid-cols-3 gap-3 text-xs">
+                        <div class="rounded-xl bg-zinc-950 border border-zinc-800 p-3">
+                            <p class="text-zinc-500">Original</p>
+                            <p class="font-mono font-bold text-zinc-100 mt-1">{{ formatCurrency(payingDebt.monto_original) }}</p>
+                        </div>
+                        <div class="rounded-xl bg-zinc-950 border border-zinc-800 p-3">
+                            <p class="text-zinc-500">Pagado</p>
+                            <p class="font-mono font-bold text-cyan-300 mt-1">{{ formatCurrency(payingDebt.monto_pagado) }}</p>
+                        </div>
+                        <div class="rounded-xl bg-zinc-950 border border-zinc-800 p-3">
+                            <p class="text-zinc-500">Pendiente</p>
+                            <p class="font-mono font-bold text-amber-300 mt-1">{{ formatCurrency(payingDebt.monto_pendiente) }}</p>
+                        </div>
+                    </div>
+                    <div>
+                        <InputLabel for="pago-monto" value="Monto a pagar" />
+                        <TextInput
+                            id="pago-monto"
+                            v-model="pagoForm.monto"
+                            type="number"
+                            step="0.01"
+                            min="0.01"
+                            :max="payingDebt.monto_pendiente"
+                            class="w-full font-mono"
+                            required
+                        />
+                        <InputError :message="pagoForm.errors.monto" class="mt-1" />
+                    </div>
+                </form>
+            </template>
+            <template #footer>
+                <SecondaryButton @click="closePagoForm" type="button" class="me-3">Cancelar</SecondaryButton>
+                <PrimaryButton @click="submitPago" :disabled="pagoForm.processing">Registrar pago</PrimaryButton>
+            </template>
+        </DialogModal>
 
         <!-- ============================================================== -->
         <!-- MODAL: AJUSTAR TIPO DE CAMBIO (EXCLUSIVO CREADOR) -->

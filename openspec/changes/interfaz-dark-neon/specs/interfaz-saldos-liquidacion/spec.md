@@ -32,3 +32,8 @@ El sistema SHALL renderizar las transferencias directas óptimas en tarjetas con
 - **DADO** un viaje recién creado o donde todos los balances están en 0.00
 - **WHEN** el usuario consulta la liquidación
 - **THEN** se muestra un mensaje amigable con ilustración o ícono neón indicando *"¡Todas las cuentas están al día! No se requieren transferencias."*
+
+#### Scenario: Saldos y liquidación se actualizan al eliminar un gasto
+- **DADO** un viaje cuya pestaña de liquidación muestra deudas derivadas de un gasto
+- **WHEN** el usuario elimina ese gasto y vuelve a ver el detalle del viaje
+- **THEN** las pestañas de saldos y liquidación muestran los montos recalculados, sin deudas ni referencias del gasto eliminado

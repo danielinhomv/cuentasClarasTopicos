@@ -80,4 +80,20 @@ class Viaje extends Model
     {
         return $this->hasMany(Gasto::class);
     }
+
+    /**
+     * @return HasMany<Liquidacion, $this>
+     */
+    public function liquidaciones(): HasMany
+    {
+        return $this->hasMany(Liquidacion::class);
+    }
+
+    /**
+     * @return HasMany<GastoBitacora, $this>
+     */
+    public function bitacoras(): HasMany
+    {
+        return $this->hasMany(GastoBitacora::class);
+    }
 }

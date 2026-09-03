@@ -29,6 +29,75 @@ class ParticipanteTest extends TestCase
         ]);
     }
 
+    public function test_owner_can_add_participante_without_account(): void
+    {
+        $user = User::factory()->create();
+        $viaje = Viaje::factory()->for($user, 'user')->create(['nombre' => 'Viaje a Samaipata']);
+
+        $this->actingAs($user)
+            ->post(route('viajes.participantes.store', $viaje), [
+                'nombre' => 'Diego',
+            ])
+            ->assertRedirect(route('viajes.show', $viaje));
+
+        $this->assertDatabaseHas('participantes', [
+            'viaje_id' => $viaje->id,
+            'nombre' => 'Diego',
+            'user_id' => null,
+        ]);
+    }
+
+    public function test_guest_participante_appears_in_balance_calculation(): void
+    {
+        $user = User::factory()->create();
+        $viaje = Viaje::factory()->for($user, 'user')->create();
+        $ana = Participante::factory()->for($viaje)->create(['nombre' => 'Ana', 'user_id' => $user->id]);
+        $diego = Participante::factory()->for($viaje)->create(['nombre' => 'Diego', 'user_id' => null]);
+
+        $gasto = \App\Models\Gasto::factory()->for($viaje)->create([
+            'concepto' => 'Cena',
+            'monto' => 100.00,
+            'fecha' => '2026-09-01',
+            'pagador_id' => $ana->id,
+        ]);
+        $gasto->participantes()->sync([$ana->id, $diego->id]);
+
+        $service = new \App\Services\CalculoBalanceService();
+        $balances = collect($service->calcularBalances($viaje))->keyBy('nombre');
+
+        $this->assertEquals(100.00, $balances['Ana']['total_pagado']);
+        $this->assertEquals(50.00, $balances['Ana']['total_consumido']);
+        $this->assertEquals(50.00, $balances['Ana']['balance']);
+
+        $this->assertEquals(0.00, $balances['Diego']['total_pagado']);
+        $this->assertEquals(50.00, $balances['Diego']['total_consumido']);
+        $this->assertEquals(-50.00, $balances['Diego']['balance']);
+
+        $this->assertEquals(0.00, collect($balances)->sum('balance'));
+    }
+
+    public function test_guest_participante_can_be_payer_in_gasto(): void
+    {
+        $user = User::factory()->create();
+        $viaje = Viaje::factory()->for($user, 'user')->create();
+        $diego = Participante::factory()->for($viaje)->create(['nombre' => 'Diego', 'user_id' => null]);
+        $ana = Participante::factory()->for($viaje)->create(['nombre' => 'Ana']);
+
+        $response = $this->actingAs($user)->postJson(route('viajes.gastos.store', $viaje), [
+            'concepto' => 'Gasolina',
+            'monto' => 240.00,
+            'fecha' => '2026-09-01',
+            'pagador_id' => $diego->id,
+        ]);
+
+        $response->assertCreated();
+        $this->assertDatabaseHas('gastos', [
+            'viaje_id' => $viaje->id,
+            'pagador_id' => $diego->id,
+            'concepto' => 'Gasolina',
+        ]);
+    }
+
     public function test_participante_nombre_is_required(): void
     {
         $user = User::factory()->create();
@@ -88,6 +157,7 @@ class ParticipanteTest extends TestCase
             ->get(route('viajes.participantes.index', $viaje))
             ->assertRedirect(route('viajes.show', $viaje));
 
+        $this->withoutVite();
         $this->actingAs($user)
             ->get(route('viajes.show', $viaje))
             ->assertOk();
@@ -140,6 +210,109 @@ class ParticipanteTest extends TestCase
             ->assertRedirect(route('viajes.show', $viaje));
 
         $this->assertDatabaseMissing('participantes', ['id' => $participante->id]);
+    }
+
+    public function test_cannot_delete_participante_who_owes_pending_debt(): void
+    {
+        $user = User::factory()->create();
+        $viaje = Viaje::factory()->for($user, 'user')->create(['nombre' => 'Viaje a Samaipata']);
+        $ana = Participante::factory()->for($viaje)->create(['nombre' => 'Ana']);
+        $diego = Participante::factory()->for($viaje)->create(['nombre' => 'Diego']);
+
+        \App\Models\Liquidacion::query()->create([
+            'viaje_id' => $viaje->id,
+            'deudor_id' => $diego->id,
+            'acreedor_id' => $ana->id,
+            'monto_original' => 400.00,
+            'monto_pagado' => 0,
+            'monto_pendiente' => 400.00,
+            'estado' => 'pendiente',
+        ]);
+
+        $this->actingAs($user)
+            ->from(route('viajes.show', $viaje))
+            ->delete(route('participantes.destroy', $diego))
+            ->assertRedirect(route('viajes.show', $viaje))
+            ->assertSessionHas('flash.banner')
+            ->assertSessionHas('flash.bannerStyle', 'danger');
+
+        $this->assertStringContainsStringIgnoringCase(
+            'deuda pendiente',
+            session('flash.banner')
+        );
+        $this->assertDatabaseHas('participantes', ['id' => $diego->id]);
+    }
+
+    public function test_cannot_delete_participante_who_is_owed_pending_debt(): void
+    {
+        $user = User::factory()->create();
+        $viaje = Viaje::factory()->for($user, 'user')->create(['nombre' => 'Viaje a Samaipata']);
+        $ana = Participante::factory()->for($viaje)->create(['nombre' => 'Ana']);
+        $diego = Participante::factory()->for($viaje)->create(['nombre' => 'Diego']);
+
+        \App\Models\Liquidacion::query()->create([
+            'viaje_id' => $viaje->id,
+            'deudor_id' => $diego->id,
+            'acreedor_id' => $ana->id,
+            'monto_original' => 160.00,
+            'monto_pagado' => 0,
+            'monto_pendiente' => 160.00,
+            'estado' => 'pendiente',
+        ]);
+
+        $this->actingAs($user)
+            ->from(route('viajes.show', $viaje))
+            ->delete(route('participantes.destroy', $ana))
+            ->assertRedirect(route('viajes.show', $viaje))
+            ->assertSessionHas('flash.bannerStyle', 'danger');
+
+        $this->assertStringContainsStringIgnoringCase(
+            'deuda pendiente',
+            session('flash.banner')
+        );
+        $this->assertDatabaseHas('participantes', ['id' => $ana->id]);
+    }
+
+    public function test_cannot_delete_participante_who_participated_in_a_gasto(): void
+    {
+        $user = User::factory()->create();
+        $viaje = Viaje::factory()->for($user, 'user')->create();
+        $ana = Participante::factory()->for($viaje)->create(['nombre' => 'Ana']);
+
+        $gasto = \App\Models\Gasto::factory()->for($viaje)->create([
+            'concepto' => 'Cabaña',
+            'monto' => 800.00,
+            'fecha' => '2026-09-01',
+            'pagador_id' => $ana->id,
+        ]);
+        $gasto->participantes()->sync([$ana->id]);
+
+        $this->actingAs($user)
+            ->from(route('viajes.show', $viaje))
+            ->delete(route('participantes.destroy', $ana))
+            ->assertRedirect(route('viajes.show', $viaje))
+            ->assertSessionHas('flash.bannerStyle', 'danger');
+
+        $this->assertStringContainsStringIgnoringCase(
+            'participó en un gasto',
+            session('flash.banner')
+        );
+        $this->assertDatabaseHas('participantes', ['id' => $ana->id]);
+    }
+
+    public function test_owner_can_delete_participante_without_debts_or_gastos(): void
+    {
+        $user = User::factory()->create();
+        $viaje = Viaje::factory()->for($user, 'user')->create(['nombre' => 'Viaje a Samaipata']);
+        Participante::factory()->for($viaje)->create(['nombre' => 'Ana']);
+        $zulma = Participante::factory()->for($viaje)->create(['nombre' => 'Zulma']);
+
+        $this->actingAs($user)
+            ->delete(route('participantes.destroy', $zulma))
+            ->assertRedirect(route('viajes.show', $viaje))
+            ->assertSessionHas('flash.bannerStyle', 'success');
+
+        $this->assertDatabaseMissing('participantes', ['id' => $zulma->id]);
     }
 
     public function test_user_cannot_manage_participantes_of_another_users_viaje(): void

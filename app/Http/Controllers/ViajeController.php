@@ -4,9 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\Viaje\StoreViajeRequest;
 use App\Http\Requests\Viaje\UpdateViajeRequest;
+use App\Models\GastoBitacora;
 use App\Models\Viaje;
 use App\Services\AlgoritmoLiquidacionService;
 use App\Services\CalculoBalanceService;
+use App\Services\RegistroLiquidacionService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -113,23 +116,48 @@ class ViajeController extends Controller
     public function show(
         Viaje $viaje,
         CalculoBalanceService $balanceService,
-        AlgoritmoLiquidacionService $liquidacionService
+        AlgoritmoLiquidacionService $liquidacionService,
+        RegistroLiquidacionService $registroService
     ): Response {
         $this->authorize('view', $viaje);
 
         $viaje->load([
             'participantes' => fn ($query) => $query->orderBy('nombre'),
-            'gastos' => fn ($query) => $query->with(['pagador', 'excluidos'])->orderBy('fecha', 'desc'),
+            'gastos' => fn ($query) => $query->with(['pagador', 'excluidos', 'participantes'])->orderBy('fecha', 'desc'),
         ]);
 
-        $saldos = $balanceService->calcularBalances($viaje);
-        $liquidacion = $liquidacionService->calcularLiquidacion($saldos);
+        $saldosBrutos = $balanceService->calcularBalances($viaje);
+        $transferencias = $liquidacionService->calcularLiquidacion($saldosBrutos);
+        $liquidacion = $registroService->reconciliar($viaje, $transferencias);
+        $saldos = $registroService->aplicarPagosABalances($viaje, $saldosBrutos);
+
+        $viaje->gastos->each(function ($gasto) use ($balanceService, $viaje) {
+            $desglose = $balanceService->desgloseEfectivo($gasto, $viaje);
+            $gasto->setAttribute('cuotas_efectivo', $desglose['cuotas_efectivo']);
+            $gasto->setAttribute('tiene_ajuste_efectivo', $desglose['tiene_ajuste_efectivo']);
+            $gasto->setAttribute('monto_original', $desglose['monto_original']);
+        });
+
+        $esAnfitrion = request()->user()?->id === $viaje->user_id;
+        $bitacora = $esAnfitrion
+            ? $viaje->bitacoras()->orderByDesc('created_at')->orderByDesc('id')->get()
+            : [];
 
         return Inertia::render('Viajes/Show', [
             'viaje' => $viaje,
             'saldos' => $saldos,
             'liquidacion' => $liquidacion,
+            'bitacora' => $bitacora,
         ]);
+    }
+
+    public function bitacora(Viaje $viaje): JsonResponse
+    {
+        $this->authorize('viewAny', [GastoBitacora::class, $viaje]);
+
+        return response()->json(
+            $viaje->bitacoras()->orderByDesc('created_at')->orderByDesc('id')->get()
+        );
     }
 
     public function edit(Viaje $viaje): Response

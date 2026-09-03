@@ -59,7 +59,7 @@ El sistema SHALL permitir modificar los datos de un gasto existente (concepto, m
 #### Scenario: Eliminación exitosa de un gasto
 - **DADO** un gasto registrado en un viaje
 - **WHEN** el usuario solicita la eliminación del gasto
-- **THEN** el sistema elimina el registro del gasto y sus exclusiones asociadas en PostgreSQL
+- **THEN** el sistema elimina el registro del gasto y sus exclusiones asociadas en PostgreSQL, y los saldos y liquidaciones del viaje se recalculan a partir de los gastos que siguen existiendo (sin deudas huérfanas del gasto eliminado)
 
 ### Requirement: Seguridad y protección de gastos
 

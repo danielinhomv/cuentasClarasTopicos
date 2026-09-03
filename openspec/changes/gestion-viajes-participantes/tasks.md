@@ -35,3 +35,21 @@
 ## 7. Cierre de Apply (Verificación Manual)
 
 - [x] 7.1 Alcance: no modificar código. Tipo: no funcional (persistencia). Documentar en el resumen de apply que el equipo debe ejecutar manualmente `php artisan migrate` contra PostgreSQL cuando lo autorice, y verificar la siembra del viaje Samaipata y sus 4 participantes. Verificar: el resumen final incluye la advertencia de ejecución manual de migraciones. Spec: vinculada a `viajes/spec.md` y `participantes/spec.md` (Persistencia al refrescar).
+
+## 8. Participantes sin cuenta
+
+- [x] 8.1 Alcance: documentación OpenSpec. Tipo: no funcional. Actualizar `proposal.md`, `design.md` y `specs/participantes/spec.md` para documentar participantes sin cuenta (`user_id` nullable), coexistencia con invitación por código y paridad en gastos/saldos. Verificar: los artefactos reflejan el nuevo comportamiento. Spec: vinculada a `participantes/spec.md` (Alta de participante sin cuenta, Participantes sin cuenta participan en gastos y cálculos).
+
+- [x] 8.2 Alcance: backend. Tipo: funcional (Caso de uso 1). Asegurar que `ParticipanteController::store` cree participantes con `user_id = NULL` explícitamente. Verificar: `POST /viajes/{viaje}/participantes` persiste `user_id` nulo. Spec: vinculada a `participantes/spec.md` (Alta de participante sin cuenta).
+
+- [x] 8.3 Alcance: frontend. Tipo: funcional (Caso de uso 1). Restaurar formulario de alta manual por nombre en `Viajes/Show.vue` (solo propietario), actualizar copy del panel de invitación para distinguir ambos mecanismos, y mostrar badge "Sin cuenta" en participantes sin `user_id`. Verificar: el propietario puede agregar participantes por nombre desde la UI. Spec: vinculada a `participantes/spec.md` (Alta exitosa de participante).
+
+- [x] 8.4 Alcance: pruebas. Tipo: funcional. Agregar tests en `ParticipanteTest`, `GastoTest` y/o `CalculoBalanceServiceTest` que validen: alta con `user_id` null, participante sin cuenta como pagador, participante sin cuenta en saldos, y que el flujo de invitación por código sigue funcionando. Verificar: la suite pasa. Spec: vinculada a `participantes/spec.md` (Participantes sin cuenta participan en gastos y cálculos, Coexistencia con participantes registrados por código).
+
+## 9. Restricción de eliminación de participantes
+
+- [x] 9.1 Alcance: documentación OpenSpec. Tipo: no funcional. Actualizar proposal, design y `specs/participantes/spec.md` para exigir que no se elimine un participante con deuda pendiente (deudor o acreedor, o saldo ≠ 0) ni si ya participó en un gasto. Verificar: los artefactos describen el bloqueo y el mensaje. Spec: No se elimina un participante con deuda pendiente o participación en gastos.
+
+- [x] 9.2 Alcance: backend. Tipo: funcional (Caso de uso 1). En `ParticipanteController::destroy`, rechazar la eliminación cuando hay deuda pendiente o participación en gastos, con flash claro; permitirla solo si saldo 0 y sin gastos. Verificar: el participante permanece si está bloqueado. Spec: escenarios de bloqueo por deuda y por gasto.
+
+- [x] 9.3 Alcance: pruebas. Tipo: funcional. Extender `ParticipanteTest` con: bloqueo si debe dinero; bloqueo si le deben; bloqueo si participó en un gasto; eliminación permitida sin deudas ni gastos; mensaje flash. Verificar: la suite de ese archivo pasa. Spec: No se elimina un participante con deuda pendiente o participación en gastos.

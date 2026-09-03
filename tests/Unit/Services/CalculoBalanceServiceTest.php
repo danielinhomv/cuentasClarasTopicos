@@ -32,34 +32,40 @@ class CalculoBalanceServiceTest extends TestCase
         $carla = Participante::factory()->for($viaje)->create(['nombre' => 'Carla']);
         $diego = Participante::factory()->for($viaje)->create(['nombre' => 'Diego']);
 
+        $allIds = [$ana->id, $beto->id, $carla->id, $diego->id];
+
         // 1. Cabaña 800 (Ana)
-        Gasto::factory()->for($viaje)->create([
+        $g1 = Gasto::factory()->for($viaje)->create([
             'concepto' => 'Cabaña',
             'monto' => 800.00,
             'fecha' => '2026-09-01',
             'pagador_id' => $ana->id,
         ]);
+        $g1->participantes()->sync($allIds);
         // 2. Entradas El Fuerte 160 (Ana)
-        Gasto::factory()->for($viaje)->create([
+        $g2 = Gasto::factory()->for($viaje)->create([
             'concepto' => 'Entradas a El Fuerte',
             'monto' => 160.00,
             'fecha' => '2026-09-02',
             'pagador_id' => $ana->id,
         ]);
+        $g2->participantes()->sync($allIds);
         // 3. Cena 400 (Beto)
-        Gasto::factory()->for($viaje)->create([
+        $g3 = Gasto::factory()->for($viaje)->create([
             'concepto' => 'Cena',
             'monto' => 400.00,
             'fecha' => '2026-09-02',
             'pagador_id' => $beto->id,
         ]);
+        $g3->participantes()->sync($allIds);
         // 4. Gasolina 240 (Carla)
-        Gasto::factory()->for($viaje)->create([
+        $g4 = Gasto::factory()->for($viaje)->create([
             'concepto' => 'Gasolina',
             'monto' => 240.00,
             'fecha' => '2026-09-03',
             'pagador_id' => $carla->id,
         ]);
+        $g4->participantes()->sync($allIds);
 
         $balances = $this->service->calcularBalances($viaje);
 
@@ -115,6 +121,7 @@ class CalculoBalanceServiceTest extends TestCase
             'pagador_id' => $ana->id,
         ]);
         $gasto->excluidos()->attach($carla->id);
+        $gasto->participantes()->sync([$ana->id, $beto->id]); // Solo Ana y Beto
 
         $balances = $this->service->calcularBalances($viaje);
         $balancesPorNombre = collect($balances)->keyBy('nombre');
@@ -148,6 +155,7 @@ class CalculoBalanceServiceTest extends TestCase
             'pagador_id' => $ana->id,
         ]);
         $gasto->excluidos()->attach($ana->id);
+        $gasto->participantes()->sync([$beto->id, $carla->id]); // Solo Beto y Carla
 
         $balances = $this->service->calcularBalances($viaje);
         $balancesPorNombre = collect($balances)->keyBy('nombre');
@@ -165,7 +173,7 @@ class CalculoBalanceServiceTest extends TestCase
         $this->assertEquals(-30.00, $balancesPorNombre['Carla']['balance']);
     }
 
-    public function test_division_no_exacta_con_absorcion_de_centavos_por_pagador(): void
+    public function test_division_no_exacta_reparte_ajuste_entre_deudores(): void
     {
         $user = User::factory()->create();
         $viaje = Viaje::factory()->for($user, 'user')->create();
@@ -174,27 +182,59 @@ class CalculoBalanceServiceTest extends TestCase
         $beto = Participante::factory()->for($viaje)->create(['nombre' => 'Beto']);
         $carla = Participante::factory()->for($viaje)->create(['nombre' => 'Carla']);
 
-        Gasto::factory()->for($viaje)->create([
+        $g = Gasto::factory()->for($viaje)->create([
             'concepto' => 'Gasto indivisible 100 entre 3',
             'monto' => 100.00,
             'fecha' => '2026-09-01',
             'pagador_id' => $ana->id,
         ]);
+        $g->participantes()->sync([$ana->id, $beto->id, $carla->id]);
 
         $balances = $this->service->calcularBalances($viaje);
         $balancesPorNombre = collect($balances)->keyBy('nombre');
 
-        $this->assertEquals(33.34, $balancesPorNombre['Ana']['total_consumido']);
-        $this->assertEquals(66.66, $balancesPorNombre['Ana']['balance']);
+        $this->assertEquals(33.00, $balancesPorNombre['Ana']['total_consumido']);
+        $this->assertEquals(67.00, $balancesPorNombre['Ana']['balance']);
 
-        $this->assertEquals(33.33, $balancesPorNombre['Beto']['total_consumido']);
-        $this->assertEquals(-33.33, $balancesPorNombre['Beto']['balance']);
+        $this->assertEquals(33.50, $balancesPorNombre['Beto']['total_consumido']);
+        $this->assertEquals(-33.50, $balancesPorNombre['Beto']['balance']);
 
-        $this->assertEquals(33.33, $balancesPorNombre['Carla']['total_consumido']);
-        $this->assertEquals(-33.33, $balancesPorNombre['Carla']['balance']);
+        $this->assertEquals(33.50, $balancesPorNombre['Carla']['total_consumido']);
+        $this->assertEquals(-33.50, $balancesPorNombre['Carla']['balance']);
 
         $suma = collect($balances)->sum('balance');
         $this->assertEquals(0.00, $suma);
+    }
+
+    public function test_gasto_45_35_muestra_original_y_ajuste_entre_empatados(): void
+    {
+        $user = User::factory()->create();
+        $viaje = Viaje::factory()->for($user, 'user')->create();
+
+        $ana = Participante::factory()->for($viaje)->create(['nombre' => 'Ana']);
+        $beto = Participante::factory()->for($viaje)->create(['nombre' => 'Beto']);
+        $carla = Participante::factory()->for($viaje)->create(['nombre' => 'Carla']);
+
+        $g = Gasto::factory()->for($viaje)->create([
+            'concepto' => 'Almuerzo',
+            'monto' => 45.35,
+            'fecha' => '2026-09-01',
+            'pagador_id' => $ana->id,
+        ]);
+        $g->participantes()->sync([$ana->id, $beto->id, $carla->id]);
+
+        $balances = $this->service->calcularBalances($viaje);
+        $balancesPorNombre = collect($balances)->keyBy('nombre');
+
+        $this->assertEquals(45.35, $g->fresh()->monto);
+        $this->assertEquals(15.35, $balancesPorNombre['Ana']['total_consumido']);
+        $this->assertEquals(15.00, $balancesPorNombre['Beto']['total_consumido']);
+        $this->assertEquals(15.00, $balancesPorNombre['Carla']['total_consumido']);
+        $this->assertEquals(0.00, collect($balances)->sum('balance'));
+
+        $desglose = $this->service->desgloseEfectivo($g->fresh(['participantes']), $viaje);
+        $this->assertTrue($desglose['tiene_ajuste_efectivo']);
+        $this->assertEquals(45.35, $desglose['monto_original']);
     }
 
     public function test_gasto_indivisible_con_centavos_impares(): void
@@ -206,19 +246,20 @@ class CalculoBalanceServiceTest extends TestCase
         $beto = Participante::factory()->for($viaje)->create(['nombre' => 'Beto']);
         $carla = Participante::factory()->for($viaje)->create(['nombre' => 'Carla']);
 
-        Gasto::factory()->for($viaje)->create([
+        $g = Gasto::factory()->for($viaje)->create([
             'concepto' => 'Gasto 10 entre 3 pagado por Beto',
             'monto' => 10.00,
             'fecha' => '2026-09-01',
             'pagador_id' => $beto->id,
         ]);
+        $g->participantes()->sync([$ana->id, $beto->id, $carla->id]);
 
         $balances = $this->service->calcularBalances($viaje);
         $balancesPorNombre = collect($balances)->keyBy('nombre');
 
-        $this->assertEquals(3.34, $balancesPorNombre['Beto']['total_consumido']);
-        $this->assertEquals(3.33, $balancesPorNombre['Ana']['total_consumido']);
-        $this->assertEquals(3.33, $balancesPorNombre['Carla']['total_consumido']);
+        $this->assertEquals(3.00, $balancesPorNombre['Beto']['total_consumido']);
+        $this->assertEquals(3.50, $balancesPorNombre['Ana']['total_consumido']);
+        $this->assertEquals(3.50, $balancesPorNombre['Carla']['total_consumido']);
 
         $suma = collect($balances)->sum('balance');
         $this->assertEquals(0.00, $suma);
@@ -232,12 +273,13 @@ class CalculoBalanceServiceTest extends TestCase
         $ana = Participante::factory()->for($viaje)->create(['nombre' => 'Ana']);
         $beto = Participante::factory()->for($viaje)->create(['nombre' => 'Beto']);
 
-        Gasto::factory()->for($viaje)->create([
+        $g = Gasto::factory()->for($viaje)->create([
             'concepto' => 'Centavo',
             'monto' => 0.01,
             'fecha' => '2026-09-01',
             'pagador_id' => $ana->id,
         ]);
+        $g->participantes()->sync([$ana->id, $beto->id]);
 
         $balances = $this->service->calcularBalances($viaje);
         $balancesPorNombre = collect($balances)->keyBy('nombre');
@@ -258,12 +300,13 @@ class CalculoBalanceServiceTest extends TestCase
 
         $ana = Participante::factory()->for($viaje)->create(['nombre' => 'Ana']);
 
-        Gasto::factory()->for($viaje)->create([
+        $g = Gasto::factory()->for($viaje)->create([
             'concepto' => 'Gasto solo',
             'monto' => 50.00,
             'fecha' => '2026-09-01',
             'pagador_id' => $ana->id,
         ]);
+        $g->participantes()->sync([$ana->id]);
 
         $balances = $this->service->calcularBalances($viaje);
 
@@ -284,8 +327,10 @@ class CalculoBalanceServiceTest extends TestCase
         $ana = Participante::factory()->for($viaje)->create(['nombre' => 'Ana']);
         $beto = Participante::factory()->for($viaje)->create(['nombre' => 'Beto']);
 
+        $allIds = [$ana->id, $beto->id];
+
         // Ana paga 100 USD (696.00 Bs)
-        Gasto::factory()->for($viaje)->create([
+        $g1 = Gasto::factory()->for($viaje)->create([
             'concepto' => 'Alojamiento USD',
             'monto' => 100.00,
             'moneda' => 'USD',
@@ -293,9 +338,10 @@ class CalculoBalanceServiceTest extends TestCase
             'fecha' => '2026-09-01',
             'pagador_id' => $ana->id,
         ]);
+        $g1->participantes()->sync($allIds);
 
         // Beto paga 50 USDT (525.00 Bs)
-        Gasto::factory()->for($viaje)->create([
+        $g2 = Gasto::factory()->for($viaje)->create([
             'concepto' => 'Actividad USDT',
             'monto' => 50.00,
             'moneda' => 'USDT',
@@ -303,6 +349,7 @@ class CalculoBalanceServiceTest extends TestCase
             'fecha' => '2026-09-02',
             'pagador_id' => $beto->id,
         ]);
+        $g2->participantes()->sync($allIds);
 
         // Total consolidado = 696.00 + 525.00 = 1221.00 Bs
         // Consumo por persona = 610.50 Bs
@@ -319,6 +366,51 @@ class CalculoBalanceServiceTest extends TestCase
         $this->assertEquals(525.00, $balancesPorNombre['Beto']['total_pagado']);
         $this->assertEquals(610.50, $balancesPorNombre['Beto']['total_consumido']);
         $this->assertEquals(-85.50, $balancesPorNombre['Beto']['balance']);
+
+        $suma = collect($balances)->sum('balance');
+        $this->assertEquals(0.00, $suma);
+    }
+
+    public function test_nuevo_participante_no_afecta_gastos_anteriores(): void
+    {
+        $user = User::factory()->create();
+        $viaje = Viaje::factory()->for($user, 'user')->create();
+
+        $ana = Participante::factory()->for($viaje)->create(['nombre' => 'Ana']);
+        $beto = Participante::factory()->for($viaje)->create(['nombre' => 'Beto']);
+
+        // Gasto creado cuando solo existían Ana y Beto
+        $gasto = Gasto::factory()->for($viaje)->create([
+            'concepto' => 'Almuerzo',
+            'monto' => 100.00,
+            'fecha' => '2026-09-01',
+            'pagador_id' => $ana->id,
+        ]);
+        $gasto->participantes()->sync([$ana->id, $beto->id]);
+
+        // Nuevo participante se une al viaje DESPUÉS del gasto
+        $carla = Participante::factory()->for($viaje)->create(['nombre' => 'Carla']);
+
+        // Recalcular balances: Carla NO debe verse afectada por el gasto anterior
+        $viaje->unsetRelation('participantes');
+        $viaje->unsetRelation('gastos');
+        $balances = $this->service->calcularBalances($viaje);
+        $balancesPorNombre = collect($balances)->keyBy('nombre');
+
+        // Ana pagó 100, consumió 50 -> balance +50
+        $this->assertEquals(100.00, $balancesPorNombre['Ana']['total_pagado']);
+        $this->assertEquals(50.00, $balancesPorNombre['Ana']['total_consumido']);
+        $this->assertEquals(50.00, $balancesPorNombre['Ana']['balance']);
+
+        // Beto consumió 50 -> balance -50
+        $this->assertEquals(0.00, $balancesPorNombre['Beto']['total_pagado']);
+        $this->assertEquals(50.00, $balancesPorNombre['Beto']['total_consumido']);
+        $this->assertEquals(-50.00, $balancesPorNombre['Beto']['balance']);
+
+        // Carla: 0 en todo (no estaba cuando se creó el gasto)
+        $this->assertEquals(0.00, $balancesPorNombre['Carla']['total_pagado']);
+        $this->assertEquals(0.00, $balancesPorNombre['Carla']['total_consumido']);
+        $this->assertEquals(0.00, $balancesPorNombre['Carla']['balance']);
 
         $suma = collect($balances)->sum('balance');
         $this->assertEquals(0.00, $suma);

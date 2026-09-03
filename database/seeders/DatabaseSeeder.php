@@ -60,26 +60,31 @@ class DatabaseSeeder extends Seeder
             ]);
         }
 
-        $viaje->gastos()->create([
+        $allIds = collect($participantes)->pluck('id')->all();
+
+        $cabana = $viaje->gastos()->create([
             'concepto' => 'Cabaña',
             'monto' => 800.00,
             'fecha' => '2026-09-01',
             'pagador_id' => $participantes['Ana']->id,
         ]);
+        $cabana->participantes()->sync($allIds);
 
-        $viaje->gastos()->create([
+        $entradas = $viaje->gastos()->create([
             'concepto' => 'Entradas a El Fuerte',
             'monto' => 160.00,
             'fecha' => '2026-09-02',
             'pagador_id' => $participantes['Ana']->id,
         ]);
+        $entradas->participantes()->sync($allIds);
 
-        $viaje->gastos()->create([
+        $cena = $viaje->gastos()->create([
             'concepto' => 'Cena',
             'monto' => 400.00,
             'fecha' => '2026-09-02',
             'pagador_id' => $participantes['Beto']->id,
         ]);
+        $cena->participantes()->sync($allIds);
 
         $gasolina = $viaje->gastos()->create([
             'concepto' => 'Gasolina',
@@ -87,7 +92,9 @@ class DatabaseSeeder extends Seeder
             'fecha' => '2026-09-03',
             'pagador_id' => $participantes['Carla']->id,
         ]);
-
         $gasolina->excluidos()->attach($participantes['Diego']->id);
+        // Gasolina: todos excepto Diego
+        $gasolinaIds = collect($participantes)->except('Diego')->pluck('id')->all();
+        $gasolina->participantes()->sync([$participantes['Ana']->id, $participantes['Beto']->id, $participantes['Carla']->id]);
     }
 }

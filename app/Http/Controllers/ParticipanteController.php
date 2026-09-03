@@ -6,6 +6,7 @@ use App\Http\Requests\Participante\StoreParticipanteRequest;
 use App\Http\Requests\Participante\UpdateParticipanteRequest;
 use App\Models\Participante;
 use App\Models\Viaje;
+use App\Services\ValidacionEliminacionParticipanteService;
 use Illuminate\Http\RedirectResponse;
 
 class ParticipanteController extends Controller
@@ -19,7 +20,10 @@ class ParticipanteController extends Controller
 
     public function store(StoreParticipanteRequest $request, Viaje $viaje): RedirectResponse
     {
-        $viaje->participantes()->create($request->validated());
+        $viaje->participantes()->create([
+            'nombre' => $request->validated()['nombre'],
+            'user_id' => null,
+        ]);
 
         return redirect()
             ->route('viajes.show', $viaje)
@@ -37,11 +41,22 @@ class ParticipanteController extends Controller
             ->with('flash.bannerStyle', 'success');
     }
 
-    public function destroy(Participante $participante): RedirectResponse
-    {
+    public function destroy(
+        Participante $participante,
+        ValidacionEliminacionParticipanteService $validacion
+    ): RedirectResponse {
         $this->authorize('delete', $participante);
 
         $viajeId = $participante->viaje_id;
+        $motivo = $validacion->motivoBloqueo($participante);
+
+        if ($motivo !== null) {
+            return redirect()
+                ->route('viajes.show', $viajeId)
+                ->with('flash.banner', $motivo)
+                ->with('flash.bannerStyle', 'danger');
+        }
+
         $participante->delete();
 
         return redirect()

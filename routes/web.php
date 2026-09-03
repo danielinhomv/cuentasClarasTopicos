@@ -17,6 +17,7 @@ Route::middleware([
     Route::get('/viajes/create', [ViajeController::class, 'create'])->name('viajes.create');
     Route::post('/viajes', [ViajeController::class, 'store'])->name('viajes.store');
     Route::post('/viajes/unirse', [ViajeController::class, 'unirse'])->name('viajes.unirse');
+    Route::get('/viajes/{viaje}/bitacora', [ViajeController::class, 'bitacora'])->name('viajes.bitacora.index');
     Route::get('/viajes/{viaje}', [ViajeController::class, 'show'])->name('viajes.show');
     Route::get('/viajes/{viaje}/edit', [ViajeController::class, 'edit'])->name('viajes.edit');
     Route::put('/viajes/{viaje}', [ViajeController::class, 'update'])->name('viajes.update');
@@ -36,4 +37,5 @@ Route::middleware([
 
     Route::get('/viajes/{viaje}/saldos', [LiquidacionController::class, 'saldos'])->name('viajes.saldos');
     Route::get('/viajes/{viaje}/liquidacion', [LiquidacionController::class, 'liquidacion'])->name('viajes.liquidacion');
+    Route::post('/liquidaciones/{liquidacion}/pagos', [LiquidacionController::class, 'registrarPago'])->name('liquidaciones.pagos.store');
 });

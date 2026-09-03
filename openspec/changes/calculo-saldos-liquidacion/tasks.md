@@ -21,3 +21,33 @@
 ## 5. Cierre de Apply (Verificación de Invariante)
 
 - [x] 5.1 Alcance: no modificar código. Tipo: no funcional (verificación matemática). Documentar en el resumen de apply que el equipo debe verificar con el escenario sembrado de Samaipata que la suma de balances dé exactamente 0.00 y que las transferencias calculadas coincidan con `Diego -> Ana: Bs. 400` y `Carla -> Ana: Bs. 160`. Verificar: el resumen final incluye el recordatorio de verificación de la invariante. Spec: vinculada a `consistencia/spec.md` (Invariante en el escenario de Samaipata).
+
+## 6. Liquidaciones parciales
+
+- [x] 6.1 Alcance: documentación OpenSpec. Tipo: no funcional. Actualizar `proposal.md`, `design.md` y `specs/liquidacion/spec.md` para documentar deudas persistidas, pagos parciales, sobrepago y cierre total. Verificar: los artefactos reflejan el nuevo comportamiento. Spec: vinculada a `liquidacion/spec.md` (Usuario puede liquidar una deuda de forma completa o parcial).
+
+- [x] 6.2 Alcance: solo migración y modelos. Tipo: funcional (Caso de uso 5). Crear migraciones `liquidaciones` y `liquidacion_pagos`, modelos Eloquent y relaciones en `Viaje` y `Participante`. No ejecutar `php artisan migrate` contra la base real. Verificar: los archivos de migración y modelos existen. Spec: vinculada a `liquidacion/spec.md`.
+
+- [x] 6.3 Alcance: solo Service. Tipo: funcional (Caso de uso 5). Crear `RegistroLiquidacionService` para reconciliar el plan calculado con deudas persistidas, registrar abonos parciales/completos, rechazar sobrepagos y ajustar saldos expuestos. Verificar: el servicio aplica las reglas de original/pagado/pendiente. Spec: vinculada a `liquidacion/spec.md`.
+
+- [x] 6.4 Alcance: controlador y rutas. Tipo: funcional (Caso de uso 5). Extender `LiquidacionController` para devolver deudas enriquecidas y registrar pagos; añadir `POST /liquidaciones/{liquidacion}/pagos`. Verificar: la ruta nombrada `liquidaciones.pagos.store` existe. Spec: vinculada a `liquidacion/spec.md`.
+
+- [x] 6.5 Alcance: solo pruebas. Tipo: funcional. Actualizar `AlgoritmoLiquidacionServiceTest` y `LiquidacionTest` (y tests del nuevo servicio) cubriendo liquidación completa, parcial, múltiples abonos, sobrepago y actualización de saldos. Verificar: la suite pasa y Samaipata sigue liquidando completo. Spec: vinculada a `liquidacion/spec.md`.
+
+## 7. Ajuste a efectivo boliviano
+
+- [x] 7.1 Alcance: documentación OpenSpec. Tipo: no funcional. Actualizar proposal, design, `saldos/spec.md` y `consistencia/spec.md` con el ajuste automático a Bs 0,50, monto original inmutable y sin recargo manual. Verificar: los artefactos describen las reglas de distribución. Spec: Ajuste automático a efectivo boliviano.
+
+- [x] 7.2 Alcance: solo Service. Tipo: funcional (Casos de uso 4 y 6). Crear `AjusteEfectivoService` y usarlo desde `CalculoBalanceService` para repartir cuotas. Verificar: 45,35 y 100 entre 3 cumplen las reglas; suma de cuotas = monto; Samaipata no cambia. Spec: consistencia.
+
+- [x] 7.3 Alcance: controlador y frontend de consulta. Tipo: funcional. Exponer `cuotas_efectivo` / `tiene_ajuste_efectivo` en el detalle del viaje y mostrar original + ajuste en `Viajes/Show.vue` sin campo de recargo. Verificar: el gasto 45,35 muestra original y desglose. Spec: El detalle del gasto muestra monto original y ajuste a efectivo.
+
+- [x] 7.4 Alcance: pruebas. Tipo: funcional. Tests unitarios del ajuste y actualizar `CalculoBalanceServiceTest` (100 entre 3, 10 entre 3, 45,35, un participante, empate, liquidación parcial). Verificar: las suites de balance y liquidación pasan. Spec: consistencia y liquidación parcial.
+
+## 8. Recálculo de liquidaciones al eliminar gastos
+
+- [x] 8.1 Alcance: documentación OpenSpec. Tipo: no funcional. Actualizar proposal, design y `specs/liquidacion/spec.md` para exigir sincronizar deudas persistidas con el plan vigente al mutar gastos. Verificar: los artefactos describen alta/baja/cierre de pares. Spec: Las deudas se sincronizan cuando se elimina o cambia un gasto.
+
+- [x] 8.2 Alcance: solo Service. Tipo: funcional (Casos de uso 4 y 5). Corregir `RegistroLiquidacionService::reconciliar` para actualizar, cerrar o eliminar pares que ya no están en el plan, y que `saldos` también sincronice. Verificar: al reconciliar un plan vacío se eliminan deudas sin pagos. Spec: recálculo al eliminar gasto.
+
+- [x] 8.3 Alcance: pruebas. Tipo: funcional. Extender `LiquidacionTest` y `RegistroLiquidacionServiceTest` con: crear→deuda→eliminar; deuda completa; deuda parcial entre dos gastos; pagos parciales; sin huérfanas; saldos consistentes. Verificar: esas suites pasan. Spec: escenarios de sincronización.

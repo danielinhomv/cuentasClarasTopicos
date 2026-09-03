@@ -6,12 +6,14 @@ Para que los usuarios puedan registrar gastos compartidos y calcular saldos en C
 
 - Creación de la migración, modelo Eloquent y relaciones para la entidad `Viaje` (asociada al `User` autenticado propietario).
 - Creación de la migración, modelo Eloquent y relaciones para la entidad `Participante` (asociada a un `Viaje`).
+- **Participantes sin cuenta:** el propietario del viaje puede agregar participantes indicando únicamente su nombre, sin requerir que tengan una cuenta de usuario. El campo `user_id` en `participantes` es nullable; los participantes sin cuenta participan en gastos, saldos y liquidaciones de forma idéntica a los registrados.
+- **Coexistencia con invitación por código:** los usuarios registrados siguen pudiendo unirse al viaje mediante el código de invitación (flujo de `invitacion-viajes-auth-neon`). Ambos mecanismos conviven: alta manual por nombre (sin cuenta) y unión por código (con cuenta).
 - Creación de Form Requests para validación de datos de entrada (`StoreViajeRequest`, `UpdateViajeRequest`, `StoreParticipanteRequest`, `UpdateParticipanteRequest`).
 - Creación de Policies (`ViajePolicy`, `ParticipantePolicy`) para garantizar que un usuario solo pueda gestionar sus propios viajes y participantes.
 - Creación de Controladores backend (`ViajeController`, `ParticipanteController`) con respuestas en formato JSON / datos estructurados para los endpoints.
 - Definición de rutas web agrupadas y nombradas bajo middleware `auth`.
 - Seeder con los datos base del escenario de referencia de **Samaipata** (Viaje "Viaje a Samaipata" con los participantes: Ana, Beto, Carla y Diego).
-- Suite de pruebas automatizadas (Feature Tests) que validan los criterios de aceptación de viajes y participantes.
+- **Restricción de eliminación:** no se puede eliminar un participante si tiene deudas pendientes (como deudor o acreedor, o saldo distinto de `0.00`) o si ya participó en un gasto (pagador o incluido en la división). Si no tiene deudas y no participó en gastos, la eliminación sigue permitida. El rechazo se comunica con un mensaje flash claro.
 
 ### Casos de uso del backend que cubre
 
@@ -35,7 +37,7 @@ Esta propuesta cubre explícitamente:
 
 ### Modified Capabilities
 
-- *(ninguna; los cambios anteriores de `user-auth` se mantienen intactos)*
+- `participantes`: ampliado para soportar participantes sin cuenta (`user_id` nullable), manteniendo la unicidad de nombres por viaje y la paridad funcional en gastos y cálculos. La eliminación queda condicionada a no tener deudas pendientes ni haber participado en gastos.
 
 ## Impact
 

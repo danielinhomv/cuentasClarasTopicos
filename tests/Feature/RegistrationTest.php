@@ -56,6 +56,27 @@ class RegistrationTest extends TestCase
         ]);
     }
 
+    public function test_registration_does_not_follow_stale_intended_viaje_url(): void
+    {
+        if (! Features::enabled(Features::registration())) {
+            $this->markTestSkipped('Registration support is not enabled.');
+        }
+
+        $this->get('/viajes/999')->assertRedirect(route('login', absolute: false));
+
+        $response = $this->post('/register', [
+            'name' => 'Ana Nueva',
+            'email' => 'ana.nueva@example.com',
+            'password' => 'password',
+            'password_confirmation' => 'password',
+            'terms' => Jetstream::hasTermsAndPrivacyPolicyFeature(),
+        ]);
+
+        $this->assertAuthenticated();
+        $response->assertRedirect(route('viajes.index', absolute: false));
+        $this->get(route('viajes.index'))->assertOk();
+    }
+
     public function test_registration_rejects_duplicate_email(): void
     {
         User::factory()->create(['email' => 'ana@example.com']);

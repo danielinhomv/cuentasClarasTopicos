@@ -55,4 +55,31 @@ class Participante extends Model
         return $this->belongsToMany(Gasto::class, 'gasto_exclusiones')
             ->withTimestamps();
     }
+
+    /**
+     * Gastos en los que este participante está incluido en la división.
+     *
+     * @return BelongsToMany<Gasto, $this>
+     */
+    public function gastosParticipados(): BelongsToMany
+    {
+        return $this->belongsToMany(Gasto::class, 'gasto_participantes')
+            ->withTimestamps();
+    }
+
+    /**
+     * @return HasMany<Liquidacion, $this>
+     */
+    public function deudasComoDeudor(): HasMany
+    {
+        return $this->hasMany(Liquidacion::class, 'deudor_id');
+    }
+
+    /**
+     * @return HasMany<Liquidacion, $this>
+     */
+    public function deudasComoAcreedor(): HasMany
+    {
+        return $this->hasMany(Liquidacion::class, 'acreedor_id');
+    }
 }

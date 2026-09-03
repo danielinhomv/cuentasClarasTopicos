@@ -2,11 +2,16 @@
 
 namespace App\Services;
 
+use App\Models\Gasto;
 use App\Models\Viaje;
 use UnexpectedValueException;
 
 class CalculoBalanceService
 {
+    public function __construct(
+        private AjusteEfectivoService $ajusteEfectivo = new AjusteEfectivoService()
+    ) {}
+
     /**
      * Calcula para un viaje: total pagado, total consumido y balance neto por participante,
      * consolidando cualquier gasto en USD o USDT a la divisa base con su respectivo tipo de cambio.
@@ -40,7 +45,7 @@ class CalculoBalanceService
 
         $gastos = $viaje->relationLoaded('gastos')
             ? $viaje->gastos
-            : $viaje->gastos()->with('excluidos')->get();
+            : $viaje->gastos()->with('participantes')->get();
 
         foreach ($gastos as $gasto) {
             $tasa = 1.0;
@@ -59,14 +64,13 @@ class CalculoBalanceService
                 $pagadoCentavos[$gasto->pagador_id] += $montoCentavos;
             }
 
-            $excluidosCollection = $gasto->relationLoaded('excluidos')
-                ? $gasto->excluidos
-                : $gasto->excluidos()->get();
+            // Usar la tabla de participantes incluidos (snapshot al momento de creación)
+            $participantesGasto = $gasto->relationLoaded('participantes')
+                ? $gasto->participantes
+                : $gasto->participantes()->get();
 
-            $excluidosIds = $excluidosCollection->pluck('id')->all();
-
-            $beneficiarios = $participantes->filter(
-                fn ($p) => ! in_array($p->id, $excluidosIds, true)
+            $beneficiarios = $participantesGasto->filter(
+                fn ($p) => isset($consumoCentavos[$p->id])
             );
 
             $k = $beneficiarios->count();
@@ -74,20 +78,16 @@ class CalculoBalanceService
                 continue;
             }
 
-            $cuotaBase = intdiv($montoCentavos, $k);
-            $residuo = $montoCentavos % $k;
+            $cuotas = $this->ajusteEfectivo->repartir(
+                $montoCentavos,
+                $beneficiarios->pluck('id')->all(),
+                (int) $gasto->pagador_id
+            );
 
-            $pagadorEsBeneficiario = $beneficiarios->contains('id', $gasto->pagador_id);
-
-            foreach ($beneficiarios as $beneficiario) {
-                $cuota = $cuotaBase;
-                if ($pagadorEsBeneficiario && $beneficiario->id === $gasto->pagador_id) {
-                    $cuota += $residuo;
-                } elseif (! $pagadorEsBeneficiario && $beneficiario->id === $beneficiarios->first()->id) {
-                    $cuota += $residuo;
+            foreach ($cuotas as $participanteId => $cuota) {
+                if (isset($consumoCentavos[$participanteId])) {
+                    $consumoCentavos[$participanteId] += $cuota;
                 }
-
-                $consumoCentavos[$beneficiario->id] += $cuota;
             }
         }
 
@@ -114,5 +114,53 @@ class CalculoBalanceService
         }
 
         return $balances;
+    }
+
+    /**
+     * @return array{
+     *     monto_original: float,
+     *     tiene_ajuste_efectivo: bool,
+     *     cuotas_efectivo: list<array{id: int, nombre: string, cuota_teorica: float, cuota_final: float, ajuste: float}>
+     * }
+     */
+    public function desgloseEfectivo(Gasto $gasto, Viaje $viaje): array
+    {
+        $tasa = 1.0;
+        $moneda = $gasto->moneda ?? 'BOB';
+        if ($moneda === 'USD') {
+            $tasa = (float) ($gasto->tipo_cambio ?: ($viaje->tipo_cambio_usd ?: 6.9600));
+        } elseif ($moneda === 'USDT') {
+            $tasa = (float) ($gasto->tipo_cambio ?: ($viaje->tipo_cambio_usdt ?: 10.5000));
+        }
+
+        $montoConsolidado = round(((float) $gasto->monto) * $tasa, 2);
+        $montoCentavos = (int) round($montoConsolidado * 100);
+        $beneficiarios = $gasto->relationLoaded('participantes')
+            ? $gasto->participantes
+            : $gasto->participantes()->get();
+        $ids = $beneficiarios->pluck('id')->all();
+        $k = count($ids);
+        $teorica = $k > 0 ? intdiv($montoCentavos, $k) : 0;
+        $cuotas = $k > 0
+            ? $this->ajusteEfectivo->repartir($montoCentavos, $ids, (int) $gasto->pagador_id)
+            : [];
+
+        $desglose = [];
+        foreach ($beneficiarios as $participante) {
+            $final = $cuotas[$participante->id] ?? 0;
+            $desglose[] = [
+                'id' => $participante->id,
+                'nombre' => $participante->nombre,
+                'cuota_teorica' => round($teorica / 100, 2),
+                'cuota_final' => round($final / 100, 2),
+                'ajuste' => round(($final - $teorica) / 100, 2),
+            ];
+        }
+
+        return [
+            'monto_original' => round((float) $gasto->monto, 2),
+            'tiene_ajuste_efectivo' => collect($desglose)->contains(fn (array $c) => $c['ajuste'] != 0.0),
+            'cuotas_efectivo' => $desglose,
+        ];
     }
 }

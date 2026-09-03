@@ -39,3 +39,56 @@ El sistema SHALL implementar un algoritmo de liquidación de deudas que tome los
 - **DADO** un balance con Ana (`+200.00`), Beto (`+50.00`), Carla (`-200.00`) y Diego (`-50.00`)
 - **WHEN** el algoritmo empareja deudores y acreedores
 - **THEN** empareja montos idénticos directamente: Carla $\rightarrow$ Ana por `200.00` y Diego $\rightarrow$ Beto por `50.00` (minimizando transferencias fraccionadas)
+
+### Requirement: Usuario puede liquidar una deuda de forma completa o parcial
+
+El sistema SHALL persistir cada transferencia sugerida como una deuda entre un deudor y un acreedor, exponiendo `monto_original`, `monto_pagado` y `monto_pendiente`. El sistema SHALL permitir registrar uno o más pagos sobre la misma deuda siempre que cada pago sea mayor a cero y no exceda el pendiente. Cuando el pendiente llegue a `0.00`, el sistema SHALL marcar la deuda como completamente liquidada.
+
+#### Scenario: Liquidación completa de una deuda
+- **DADO** una deuda persistida de Diego hacia Ana por `40.00` sin pagos previos
+- **WHEN** se registra un pago de `40.00`
+- **THEN** `monto_original` es `40.00`, `monto_pagado` es `40.00`, `monto_pendiente` es `0.00` y la deuda queda en estado liquidada
+
+#### Scenario: Liquidación parcial de una deuda
+- **DADO** una deuda persistida de Diego hacia Ana por `40.00` sin pagos previos
+- **WHEN** se registra un pago de `20.00`
+- **THEN** `monto_original` es `40.00`, `monto_pagado` es `20.00`, `monto_pendiente` es `20.00` y la deuda permanece pendiente
+
+#### Scenario: Múltiples pagos parciales sobre la misma deuda
+- **DADO** una deuda de `40.00` con un primer pago de `20.00`
+- **WHEN** se registra un segundo pago de `20.00`
+- **THEN** `monto_pagado` es `40.00`, `monto_pendiente` es `0.00` y la deuda queda liquidada
+
+#### Scenario: Rechazo de sobrepago
+- **DADO** una deuda con pendiente `20.00`
+- **WHEN** se intenta registrar un pago de `25.00`
+- **THEN** el sistema rechaza el pago, no modifica montos y responde con error de validación
+
+#### Scenario: Saldos se actualizan después de un pago parcial
+- **DADO** balances brutos Diego `-40.00` y Ana `+40.00`, y un pago de `20.00` de Diego a Ana
+- **WHEN** se consultan los saldos del viaje
+- **THEN** el saldo expuesto de Diego es `-20.00` y el de Ana es `+20.00`, manteniendo la suma de balances en `0.00`
+
+### Requirement: Las deudas se sincronizan cuando se elimina o cambia un gasto
+
+Al eliminar (o editar) un gasto, el sistema SHALL recalcular saldos y el plan de liquidación a partir de los gastos que siguen existiendo, y SHALL actualizar las deudas persistidas. MUST NOT dejar liquidaciones pendientes que correspondan a un gasto ya inexistente. Si la deuda de un par disminuye, `monto_pendiente` MUST reflejar el nuevo original menos los pagos ya registrados. Si el par deja de existir y no hubo pagos, la fila MUST eliminarse. El frontend MUST mostrar el mismo conjunto de saldos y deudas que el backend tras la mutación.
+
+#### Scenario: Crear gasto, ver deuda y eliminarlo
+- **DADO** Ana y Diego en un viaje, y un gasto de `80.00` pagado por Ana e incluido ambos
+- **WHEN** se consulta la liquidación y luego se elimina el gasto
+- **THEN** primero Diego debe `40.00` a Ana; después no hay deudas pendientes, los saldos son `0.00` y no queda ninguna liquidación huérfana
+
+#### Scenario: Eliminar un gasto que genera una deuda completa
+- **DADO** una única deuda persistida originada por un gasto
+- **WHEN** se elimina ese gasto
+- **THEN** el plan queda vacío y la liquidación de ese par desaparece
+
+#### Scenario: Eliminar un gasto que afecta parcialmente una deuda existente
+- **DADO** dos gastos de `80.00` pagados por Ana e incluidos Ana y Diego (Diego debe `80.00`)
+- **WHEN** se elimina uno de esos gastos
+- **THEN** la deuda Diego → Ana queda en `40.00` de original y pendiente, y los saldos coinciden con un solo gasto restante
+
+#### Scenario: Eliminar un gasto con liquidación parcial previa
+- **DADO** dos gastos de `80.00` como arriba y un abono de `30.00` de Diego a Ana
+- **WHEN** se elimina uno de los gastos
+- **THEN** `monto_original` es `40.00`, `monto_pagado` sigue `30.00`, `monto_pendiente` es `10.00` y la suma de saldos expuestos es `0.00`

@@ -37,6 +37,20 @@ El sistema SHALL calcular para cada participante de un viaje: el total de dinero
 - **WHEN** se solicitan los saldos del viaje
 - **THEN** el sistema retorna para cada participante `total_pagado = 0.00`, `total_consumido = 0.00` y `balance = 0.00` sin errores
 
+#### Scenario: Saldos consistentes después de eliminar un gasto
+- **DADO** un gasto que generaba deuda entre participantes
+- **WHEN** se elimina ese gasto y se consultan los saldos
+- **THEN** los balances coinciden con los gastos restantes, su suma es `0.00` y no reflejan el gasto eliminado
+
+### Requirement: El detalle del gasto muestra monto original y ajuste a efectivo
+
+El sistema SHALL exponer, junto al monto ingresado por el anfitrión, el desglose de cuotas finales tras el ajuste a Bs 0,50 y el importe de ajuste por participante. El formulario de alta/edición MUST NOT incluir un campo para cargar recargo.
+
+#### Scenario: Visualización de original y ajuste en Bs. 45,35
+- **DADO** un gasto de `45.35` con cuotas de efectivo distintas de la teórica
+- **WHEN** el usuario ve el detalle del viaje
+- **THEN** se muestra el monto original `45.35` y el ajuste aplicado por integrante, sin permitir editar el recargo
+
 ### Requirement: Cálculo de saldos con participantes excluidos
 
 El sistema SHALL contemplar las exclusiones registradas en cada gasto al calcular la cuota parte de cada participante. Un participante excluido de un gasto no recibirá ningún cargo por dicho concepto (`cuota_parte = 0.00`).

@@ -1,6 +1,6 @@
 ## Purpose
 
-Garantiza la consistencia matemática absoluta de los cálculos en Cuentas Claras, validando la invariante estricta de balance cero y la absorción de centavos residuales por el pagador del gasto.
+Garantiza la consistencia matemática absoluta de los cálculos en Cuentas Claras, validando la invariante estricta de balance cero y el ajuste automático de cuotas al efectivo boliviano.
 
 ## ADDED Requirements
 
@@ -18,35 +18,36 @@ La suma algebraica de todos los balances de los participantes de un viaje MUST s
 - **WHEN** se suma algebraicamente `560.00 + 0.00 + (-160.00) + (-400.00)`
 - **THEN** el resultado es exactamente `0.00`
 
-### Requirement: Manejo de redondeo con absorción de centavos por el pagador
+### Requirement: Ajuste automático a efectivo boliviano sin recargo manual
 
-Al dividir un gasto cuyo monto no es exactamente divisible entre el número de participantes incluidos (por ejemplo, Bs. 100.00 entre 3 personas), los centavos sobrantes MUST ser absorbidos por el participante que pagó el gasto originalmente, asegurando que la suma de las cuotas partes individuales iguale con exactitud el monto total del gasto.
+El anfitrión MUST ingresar siempre el monto real del gasto; el sistema MUST NOT permitir agregar dinero extra a mano. El monto persistido SHALL permanecer igual al ingresado. Tras calcular la cuota teórica, el sistema SHALL aplicar el menor ajuste automático para que las cuotas de quienes deben se puedan pagar con efectivo boliviano (múltiplos de Bs 0,50; no se usan monedas de Bs 0,20 ni Bs 0,30). El pagador/anfitrión MUST NOT elegir el ajuste ni recibirlo cuando hay deudores. Si un deudor debe más que los demás, recibe primero las unidades extra de Bs 0,50. Si varios deben exactamente lo mismo, el ajuste se reparte entre ellos de forma determinística (por `participante_id`). La suma de cuotas finales MUST igualar el monto original. Gastos enteros ya existentes y liquidaciones parciales persistidas MUST seguir funcionando.
 
-#### Scenario: División no exacta con pagador incluido (ej. Bs. 100 entre 3)
-- **DADO** un viaje con Ana, Beto y Carla, donde Ana paga un gasto de `100.00` Bs. compartido entre los 3
-- **WHEN** el sistema calcula la cuota parte de cada uno
-- **THEN** a los participantes deudores (Beto y Carla) se les asigna una cuota de `33.33` Bs. a cada uno, y Ana (la pagadora) absorbe el centavo restante asumiendo un consumo de `33.34` Bs., resultando en:
-  - Total consumos: `33.33 + 33.33 + 33.34 = 100.00`
-  - Balance Ana: `100.00 - 33.34 = +66.66`
-  - Balance Beto: `0.00 - 33.33 = -33.33`
-  - Balance Carla: `0.00 - 33.33 = -33.33`
-  - Suma de balances: `66.66 - 33.33 - 33.33 = 0.00`
+#### Scenario: División no exacta entre 3 (Bs. 100) — el ajuste no va al pagador
+- **DADO** un viaje con Ana, Beto y Carla, donde Ana paga `100.00` compartido entre los 3
+- **WHEN** el sistema calcula las cuotas
+- **THEN** Ana (pagadora) consume `33.00`, Beto y Carla (misma deuda) consumen `33.50` cada uno, la suma es `100.00`, y Ana no absorbe el sobrante
 
-#### Scenario: Gasto indivisible con centavos impares (ej. Bs. 10 entre 3)
-- **DADO** un gasto de `10.00` Bs. pagado por Beto entre 3 participantes
-- **WHEN** se divide el monto
-- **THEN** los dos participantes no pagadores reciben `3.33` Bs. c/u (`6.66` Bs. total) y Beto absorbe el centavo asumiendo `3.34` Bs. de consumo (`6.66 + 3.34 = 10.00`), con suma de balances `0.00`
+#### Scenario: Gasto real Bs. 45,35 con varios deudores empatados
+- **DADO** un gasto de `45.35` pagado por Ana e incluido Ana, Beto y Carla
+- **WHEN** se calculan las cuotas
+- **THEN** el monto original sigue siendo `45.35`, Beto y Carla pagan `15.00` (efectivo), Ana queda con el residuo `15.35` porque ya desembolsó el monto real, y la suma de cuotas es `45.35`
 
-### Requirement: Robustez ante casos borde numéricos
+#### Scenario: Un deudor debe más y recibe primero el ajuste de 0,50
+- **DADO** un gasto de `11.00` pagado por Ana entre Ana, Beto y Carla
+- **WHEN** se asignan las unidades extra de Bs 0,50
+- **THEN** un deudor (el de menor `id` entre Beto y Carla, que empatan) recibe `4.00` y el otro `3.50`; Ana consume `3.50`; suma `11.00`
 
-El sistema MUST procesar correctamente montos mínimos de 1 centavo y viajes con un solo participante sin generar divisiones por cero ni errores de desbordamiento.
+#### Scenario: Un solo participante
+- **DADO** Ana como única incluida en un gasto de `45.35` que ella pagó
+- **WHEN** se calcula el saldo
+- **THEN** consume `45.35`, balance `0.00` y no hay recargo inventado
 
 #### Scenario: Gasto mínimo de un centavo (Bs. 0.01)
-- **DADO** un gasto de `0.01` Bs. pagado por Ana entre Ana y Beto
+- **DADO** un gasto de `0.01` pagado por Ana entre Ana y Beto
 - **WHEN** el sistema procesa la división
-- **THEN** el sistema asigna el centavo a la pagadora Ana (`0.01` consumo) y `0.00` a Beto, manteniendo la suma en `0.01` y el balance en `0.00`
+- **THEN** Ana consume `0.01`, Beto `0.00`, suma `0.01` y balances en `0.00`
 
-#### Scenario: Viaje con un único participante que paga su propio gasto
-- **DADO** un viaje con un solo participante que registra un gasto de `50.00` Bs.
-- **WHEN** se calculan los saldos
-- **THEN** su total pagado es `50.00`, su consumo es `50.00`, su balance es `0.00` y la liquidación requiere 0 transferencias
+#### Scenario: Liquidación parcial no se rompe
+- **DADO** una deuda persistida con un abono parcial
+- **WHEN** se recalculan saldos y el plan de liquidación
+- **THEN** el abono permanece y el pendiente se ajusta contra el `monto_original` reconciliado sin borrar pagos
