@@ -110,7 +110,8 @@ const submit = () => {
                     v-model="form.descripcion"
                     rows="4"
                     maxlength="1000"
-                    class="mt-1 block w-full border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm"
+                    placeholder="Detalles sobre el destino, fechas o notas compartidas..."
+                    class="mt-1 block w-full bg-zinc-900 border border-zinc-700 text-zinc-100 placeholder-zinc-500 rounded-lg shadow-inner focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 text-sm"
                 />
                 <InputError :message="descripcionError" class="mt-2" />
             </div>

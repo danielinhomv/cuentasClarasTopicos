@@ -27,16 +27,21 @@ const submit = () => {
 </script>
 
 <template>
-    <Head title="Reset Password" />
+    <Head title="Restablecer Contraseña" />
 
     <AuthenticationCard>
         <template #logo>
             <AuthenticationCardLogo />
         </template>
 
-        <form @submit.prevent="submit">
+        <div class="mb-6 text-center">
+            <h2 class="text-xl font-bold text-zinc-100 tracking-tight">Restablecer Contraseña</h2>
+            <p class="text-xs text-zinc-400 mt-1">Crea una nueva contraseña segura para tu cuenta.</p>
+        </div>
+
+        <form @submit.prevent="submit" class="space-y-4">
             <div>
-                <InputLabel for="email" value="Email" />
+                <InputLabel for="email" value="Correo electrónico" />
                 <TextInput
                     id="email"
                     v-model="form.email"
@@ -46,11 +51,11 @@ const submit = () => {
                     autofocus
                     autocomplete="username"
                 />
-                <InputError class="mt-2" :message="form.errors.email" />
+                <InputError class="mt-1.5" :message="form.errors.email" />
             </div>
 
-            <div class="mt-4">
-                <InputLabel for="password" value="Password" />
+            <div>
+                <InputLabel for="password" value="Nueva contraseña" />
                 <TextInput
                     id="password"
                     v-model="form.password"
@@ -59,11 +64,11 @@ const submit = () => {
                     required
                     autocomplete="new-password"
                 />
-                <InputError class="mt-2" :message="form.errors.password" />
+                <InputError class="mt-1.5" :message="form.errors.password" />
             </div>
 
-            <div class="mt-4">
-                <InputLabel for="password_confirmation" value="Confirm Password" />
+            <div>
+                <InputLabel for="password_confirmation" value="Confirmar nueva contraseña" />
                 <TextInput
                     id="password_confirmation"
                     v-model="form.password_confirmation"
@@ -72,12 +77,13 @@ const submit = () => {
                     required
                     autocomplete="new-password"
                 />
-                <InputError class="mt-2" :message="form.errors.password_confirmation" />
+                <InputError class="mt-1.5" :message="form.errors.password_confirmation" />
             </div>
 
-            <div class="flex items-center justify-end mt-4">
-                <PrimaryButton :class="{ 'opacity-25': form.processing }" :disabled="form.processing">
-                    Reset Password
+            <div class="pt-2">
+                <PrimaryButton class="w-full justify-center py-3 text-sm" :disabled="form.processing">
+                    <span v-if="form.processing">Restableciendo...</span>
+                    <span v-else>Restablecer Contraseña</span>
                 </PrimaryButton>
             </div>
         </form>

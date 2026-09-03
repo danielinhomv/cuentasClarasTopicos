@@ -27,7 +27,7 @@ class AuthenticationTest extends TestCase
         ]);
 
         $this->assertAuthenticated();
-        $response->assertRedirect(route('dashboard', absolute: false));
+        $response->assertRedirect(route('viajes.index', absolute: false));
     }
 
     public function test_users_can_not_authenticate_with_invalid_password(): void
@@ -49,12 +49,12 @@ class AuthenticationTest extends TestCase
         $this->actingAs($user)->post('/logout');
 
         $this->assertGuest();
-        $this->get('/dashboard')->assertRedirect(route('login', absolute: false));
+        $this->get('/viajes')->assertRedirect(route('login', absolute: false));
     }
 
-    public function test_guests_cannot_access_the_dashboard(): void
+    public function test_guests_cannot_access_viajes(): void
     {
-        $this->get('/dashboard')->assertRedirect(route('login', absolute: false));
+        $this->get('/viajes')->assertRedirect(route('login', absolute: false));
     }
 
     public function test_authenticated_users_are_redirected_away_from_login_and_register(): void
@@ -63,11 +63,11 @@ class AuthenticationTest extends TestCase
 
         $this->actingAs($user)
             ->get('/login')
-            ->assertRedirect(route('dashboard', absolute: false));
+            ->assertRedirect(route('viajes.index', absolute: false));
 
         $this->actingAs($user)
             ->get('/register')
-            ->assertRedirect(route('dashboard', absolute: false));
+            ->assertRedirect(route('viajes.index', absolute: false));
     }
 
     public function test_login_fails_when_no_users_exist(): void
@@ -80,12 +80,12 @@ class AuthenticationTest extends TestCase
         ]);
 
         $this->assertGuest();
-        $this->get('/dashboard')->assertRedirect(route('login', absolute: false));
+        $this->get('/viajes')->assertRedirect(route('login', absolute: false));
     }
 
-    public function test_home_redirects_guests_to_login(): void
+    public function test_home_redirects_to_viajes(): void
     {
-        $this->get('/')->assertRedirect('/dashboard');
-        $this->get('/dashboard')->assertRedirect(route('login', absolute: false));
+        $this->get('/')->assertRedirect('/viajes');
+        $this->get('/dashboard')->assertRedirect('/viajes');
     }
 }

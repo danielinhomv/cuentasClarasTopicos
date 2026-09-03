@@ -14,7 +14,8 @@ class ViajePolicy
 
     public function view(User $user, Viaje $viaje): bool
     {
-        return $user->id === $viaje->user_id;
+        return $user->id === $viaje->user_id
+            || $viaje->participantes()->where('user_id', $user->id)->exists();
     }
 
     public function create(User $user): bool

@@ -147,4 +147,89 @@ class ViajeTest extends TestCase
         $this->get(route('viajes.index'))
             ->assertRedirect(route('login'));
     }
+
+    public function test_user_can_join_viaje_using_valid_codigo_invitacion(): void
+    {
+        $owner = User::factory()->create(['name' => 'Ana']);
+        $friend = User::factory()->create(['name' => 'Beto']);
+
+        $viaje = Viaje::factory()->for($owner, 'user')->create([
+            'codigo_invitacion' => 'SAMA8X12',
+        ]);
+
+        $this->actingAs($friend)
+            ->post(route('viajes.unirse'), [
+                'codigo_invitacion' => 'sama8x12',
+            ])
+            ->assertRedirect(route('viajes.show', $viaje))
+            ->assertSessionHas('flash.banner');
+
+        $this->assertDatabaseHas('participantes', [
+            'viaje_id' => $viaje->id,
+            'user_id' => $friend->id,
+            'nombre' => 'Beto',
+        ]);
+    }
+
+    public function test_user_cannot_join_viaje_with_invalid_codigo(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->post(route('viajes.unirse'), [
+                'codigo_invitacion' => 'NOEXISTE',
+            ])
+            ->assertSessionHasErrors('codigo_invitacion');
+    }
+
+    public function test_user_cannot_join_viaje_twice(): void
+    {
+        $owner = User::factory()->create();
+        $friend = User::factory()->create();
+
+        $viaje = Viaje::factory()->for($owner, 'user')->create([
+            'codigo_invitacion' => 'SAMA8X12',
+        ]);
+
+        $viaje->participantes()->create([
+            'user_id' => $friend->id,
+            'nombre' => $friend->name,
+        ]);
+
+        $this->actingAs($friend)
+            ->post(route('viajes.unirse'), [
+                'codigo_invitacion' => 'SAMA8X12',
+            ])
+            ->assertSessionHasErrors('codigo_invitacion');
+    }
+
+    public function test_participating_user_can_view_viaje_and_lists_in_index(): void
+    {
+        $owner = User::factory()->create();
+        $friend = User::factory()->create();
+
+        $viaje = Viaje::factory()->for($owner, 'user')->create([
+            'nombre' => 'Samaipata Amigos',
+            'codigo_invitacion' => 'SAMA8X12',
+        ]);
+
+        $viaje->participantes()->create([
+            'user_id' => $friend->id,
+            'nombre' => $friend->name,
+        ]);
+
+        $this->actingAs($friend)
+            ->get(route('viajes.show', $viaje))
+            ->assertOk();
+
+        $this->actingAs($friend)
+            ->get(route('viajes.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Viajes/Index')
+                ->has('viajes.data', 1)
+                ->where('viajes.data.0.nombre', 'Samaipata Amigos')
+            );
+    }
 }
+

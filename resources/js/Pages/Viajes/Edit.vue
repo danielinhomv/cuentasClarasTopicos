@@ -13,13 +13,13 @@ defineProps({
 <template>
     <AppLayout title="Editar viaje">
         <template #header>
-            <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-                Editar viaje
+            <h2 class="font-bold text-2xl text-zinc-100 tracking-tight">
+                Editar Viaje
             </h2>
         </template>
 
-        <div>
-            <div class="max-w-7xl mx-auto py-10 sm:px-6 lg:px-8">
+        <div class="py-10">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <ViajeForm :viaje="viaje" />
             </div>
         </div>

@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Http\Requests\Viaje\StoreViajeRequest;
 use App\Http\Requests\Viaje\UpdateViajeRequest;
 use App\Models\Viaje;
+use App\Services\AlgoritmoLiquidacionService;
+use App\Services\CalculoBalanceService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -18,9 +20,13 @@ class ViajeController extends Controller
 
         $search = trim((string) $request->query('search', ''));
         $status = (string) $request->query('status', '');
+        $user = $request->user();
 
-        $query = $request->user()
-            ->viajes()
+        $query = Viaje::query()
+            ->where(function ($q) use ($user) {
+                $q->where('user_id', $user->id)
+                  ->orWhereHas('participantes', fn ($p) => $p->where('user_id', $user->id));
+            })
             ->withCount('participantes')
             ->latest();
 
@@ -52,7 +58,14 @@ class ViajeController extends Controller
 
     public function store(StoreViajeRequest $request): RedirectResponse
     {
-        $viaje = $request->user()->viajes()->create($request->validated());
+        $user = $request->user();
+        $viaje = $user->viajes()->create($request->validated());
+
+        // Registrar al creador automáticamente como el primer participante
+        $viaje->participantes()->create([
+            'user_id' => $user->id,
+            'nombre' => $user->name,
+        ]);
 
         return redirect()
             ->route('viajes.show', $viaje)
@@ -60,14 +73,62 @@ class ViajeController extends Controller
             ->with('flash.bannerStyle', 'success');
     }
 
-    public function show(Viaje $viaje): Response
+    public function unirse(Request $request): RedirectResponse
     {
+        $validated = $request->validate([
+            'codigo_invitacion' => ['required', 'string', 'size:8'],
+        ], [
+            'codigo_invitacion.required' => 'El código de invitación es obligatorio.',
+            'codigo_invitacion.size' => 'El código de invitación debe tener 8 caracteres.',
+        ]);
+
+        $codigo = strtoupper(trim($validated['codigo_invitacion']));
+        $viaje = Viaje::where('codigo_invitacion', $codigo)->first();
+
+        if (! $viaje) {
+            return back()->withErrors([
+                'codigo_invitacion' => 'El código de invitación ingresado no existe.',
+            ]);
+        }
+
+        $user = $request->user();
+
+        if ($viaje->participantes()->where('user_id', $user->id)->exists()) {
+            return back()->withErrors([
+                'codigo_invitacion' => 'Ya eres participante de este viaje.',
+            ]);
+        }
+
+        $viaje->participantes()->create([
+            'user_id' => $user->id,
+            'nombre' => $user->name,
+        ]);
+
+        return redirect()
+            ->route('viajes.show', $viaje)
+            ->with('flash.banner', "¡Te has unido exitosamente al viaje {$viaje->nombre}!")
+            ->with('flash.bannerStyle', 'success');
+    }
+
+    public function show(
+        Viaje $viaje,
+        CalculoBalanceService $balanceService,
+        AlgoritmoLiquidacionService $liquidacionService
+    ): Response {
         $this->authorize('view', $viaje);
 
-        $viaje->load(['participantes' => fn ($query) => $query->orderBy('nombre')]);
+        $viaje->load([
+            'participantes' => fn ($query) => $query->orderBy('nombre'),
+            'gastos' => fn ($query) => $query->with(['pagador', 'excluidos'])->orderBy('fecha', 'desc'),
+        ]);
+
+        $saldos = $balanceService->calcularBalances($viaje);
+        $liquidacion = $liquidacionService->calcularLiquidacion($saldos);
 
         return Inertia::render('Viajes/Show', [
             'viaje' => $viaje,
+            'saldos' => $saldos,
+            'liquidacion' => $liquidacion,
         ]);
     }
 
@@ -99,6 +160,30 @@ class ViajeController extends Controller
         return redirect()
             ->route('viajes.index')
             ->with('flash.banner', 'Viaje eliminado correctamente.')
+            ->with('flash.bannerStyle', 'success');
+    }
+
+    public function actualizarTipoCambio(Request $request, Viaje $viaje): RedirectResponse
+    {
+        $this->authorize('update', $viaje);
+
+        $validated = $request->validate([
+            'tipo_cambio_usd' => ['required', 'numeric', 'min:0.0001', 'max:9999.9999'],
+            'tipo_cambio_usdt' => ['required', 'numeric', 'min:0.0001', 'max:9999.9999'],
+        ], [
+            'tipo_cambio_usd.required' => 'El tipo de cambio para USD es requerido.',
+            'tipo_cambio_usd.numeric' => 'El tipo de cambio para USD debe ser numérico.',
+            'tipo_cambio_usd.min' => 'El tipo de cambio para USD debe ser mayor a 0.',
+            'tipo_cambio_usdt.required' => 'El tipo de cambio para USDT es requerido.',
+            'tipo_cambio_usdt.numeric' => 'El tipo de cambio para USDT debe ser numérico.',
+            'tipo_cambio_usdt.min' => 'El tipo de cambio para USDT debe ser mayor a 0.',
+        ]);
+
+        $viaje->update($validated);
+
+        return redirect()
+            ->route('viajes.show', $viaje)
+            ->with('flash.banner', 'Tipos de cambio actualizados correctamente.')
             ->with('flash.bannerStyle', 'success');
     }
 }

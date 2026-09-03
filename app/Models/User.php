@@ -75,4 +75,12 @@ class User extends Authenticatable
     {
         return $this->hasMany(Viaje::class);
     }
+
+    /**
+     * @return HasMany<Participante, $this>
+     */
+    public function participaciones(): HasMany
+    {
+        return $this->hasMany(Participante::class);
+    }
 }

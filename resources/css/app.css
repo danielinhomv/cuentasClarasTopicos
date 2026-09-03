@@ -5,3 +5,24 @@
 [x-cloak] {
     display: none;
 }
+
+body {
+    background-color: #09090b;
+    color: #f4f4f5;
+}
+
+.neon-glow-cyan {
+    box-shadow: 0 0 15px -3px rgba(6, 182, 212, 0.3), 0 0 6px -2px rgba(6, 182, 212, 0.2);
+}
+
+.neon-glow-emerald {
+    box-shadow: 0 0 15px -3px rgba(16, 185, 129, 0.3), 0 0 6px -2px rgba(16, 185, 129, 0.2);
+}
+
+.neon-glow-violet {
+    box-shadow: 0 0 15px -3px rgba(139, 92, 246, 0.3), 0 0 6px -2px rgba(139, 92, 246, 0.2);
+}
+
+.neon-border-cyan {
+    border-color: rgba(6, 182, 212, 0.4);
+}

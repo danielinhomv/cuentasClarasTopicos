@@ -6,6 +6,8 @@ use Database\Factories\ParticipanteFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Participante extends Model
 {
@@ -18,6 +20,7 @@ class Participante extends Model
     protected $fillable = [
         'nombre',
         'viaje_id',
+        'user_id',
     ];
 
     /**
@@ -26,5 +29,30 @@ class Participante extends Model
     public function viaje(): BelongsTo
     {
         return $this->belongsTo(Viaje::class);
+    }
+
+    /**
+     * @return BelongsTo<User, $this>
+     */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    /**
+     * @return HasMany<Gasto, $this>
+     */
+    public function gastosPagados(): HasMany
+    {
+        return $this->hasMany(Gasto::class, 'pagador_id');
+    }
+
+    /**
+     * @return BelongsToMany<Gasto, $this>
+     */
+    public function gastosExcluidos(): BelongsToMany
+    {
+        return $this->belongsToMany(Gasto::class, 'gasto_exclusiones')
+            ->withTimestamps();
     }
 }
