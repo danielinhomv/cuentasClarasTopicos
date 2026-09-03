@@ -8,10 +8,16 @@ class AjusteEfectivoService
 
     /**
      * @param  list<int>  $beneficiarioIds
+     * @param  array<int, array{deuda: int, desde: ?string}>  $contextoDeuda
      * @return array<int, int> participante_id => consumo en centavos
      */
-    public function repartir(int $montoCentavos, array $beneficiarioIds, int $pagadorId): array
-    {
+    public function repartir(
+        int $montoCentavos,
+        array $beneficiarioIds,
+        int $anfitrionId = 0,
+        array $contextoDeuda = [],
+        int $sorteoSeed = 0
+    ): array {
         $ids = array_values(array_unique(array_map('intval', $beneficiarioIds)));
         $k = count($ids);
 
@@ -24,33 +30,28 @@ class AjusteEfectivoService
         }
 
         $unidad = self::UNIDAD_CENTAVOS;
-        $unidades = intdiv($montoCentavos, $unidad);
-        $residuoMenorUnidad = $montoCentavos % $unidad;
-        $unidadesBase = intdiv($unidades, $k);
-        $unidadesExtra = $unidades % $k;
+        $teorica = intdiv($montoCentavos, $k);
+        $piso = $teorica - ($teorica % $unidad);
 
         $cuotas = [];
         foreach ($ids as $id) {
-            $cuotas[$id] = $unidadesBase * $unidad;
+            $cuotas[$id] = $piso;
         }
 
-        $deudores = $this->deudoresOrdenados($ids, $pagadorId);
-        $nDeudores = count($deudores);
+        $gap = $montoCentavos - ($piso * $k);
+        $unidadesExtra = $gap > 0 ? (int) ceil($gap / $unidad) : 0;
+        if ($unidadesExtra === 0) {
+            return $cuotas;
+        }
+
+        $candidatos = $this->ordenarCandidatos($ids, $anfitrionId, $contextoDeuda, $sorteoSeed);
+        if ($candidatos === []) {
+            return $cuotas;
+        }
+
+        $n = count($candidatos);
         for ($i = 0; $i < $unidadesExtra; $i++) {
-            $destino = $nDeudores > 0
-                ? $deudores[$i % $nDeudores]
-                : $ids[$i % $k];
-            $cuotas[$destino] += $unidad;
-        }
-
-        if ($residuoMenorUnidad > 0) {
-            if (in_array($pagadorId, $ids, true)) {
-                $cuotas[$pagadorId] += $residuoMenorUnidad;
-            } elseif ($nDeudores > 0) {
-                $cuotas[$deudores[0]] += $residuoMenorUnidad;
-            } else {
-                $cuotas[$ids[0]] += $residuoMenorUnidad;
-            }
+            $cuotas[$candidatos[$i % $n]] += $unidad;
         }
 
         return $cuotas;
@@ -58,13 +59,51 @@ class AjusteEfectivoService
 
     /**
      * @param  list<int>  $ids
+     * @param  array<int, array{deuda: int, desde: ?string}>  $contextoDeuda
      * @return list<int>
      */
-    private function deudoresOrdenados(array $ids, int $pagadorId): array
-    {
-        $deudores = array_values(array_filter($ids, fn (int $id) => $id !== $pagadorId));
-        sort($deudores);
+    public function ordenarCandidatos(
+        array $ids,
+        int $anfitrionId,
+        array $contextoDeuda,
+        int $sorteoSeed
+    ): array {
+        $candidatos = array_values(array_filter($ids, fn (int $id) => $id !== $anfitrionId));
+        if ($candidatos === []) {
+            return [];
+        }
 
-        return $deudores;
+        usort($candidatos, function (int $a, int $b) use ($contextoDeuda, $sorteoSeed): int {
+            $deudaA = (int) ($contextoDeuda[$a]['deuda'] ?? 0);
+            $deudaB = (int) ($contextoDeuda[$b]['deuda'] ?? 0);
+            if ($deudaA !== $deudaB) {
+                return $deudaB <=> $deudaA;
+            }
+
+            $desdeA = $contextoDeuda[$a]['desde'] ?? null;
+            $desdeB = $contextoDeuda[$b]['desde'] ?? null;
+            if ($desdeA !== $desdeB) {
+                if ($desdeA === null) {
+                    return 1;
+                }
+                if ($desdeB === null) {
+                    return -1;
+                }
+
+                return $desdeA <=> $desdeB;
+            }
+
+            $claveA = $this->claveSorteo($sorteoSeed, $a);
+            $claveB = $this->claveSorteo($sorteoSeed, $b);
+
+            return $claveA <=> $claveB;
+        });
+
+        return $candidatos;
+    }
+
+    public function claveSorteo(int $sorteoSeed, int $participanteId): int
+    {
+        return crc32($sorteoSeed.'|'.$participanteId);
     }
 }

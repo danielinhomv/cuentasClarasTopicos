@@ -178,7 +178,7 @@ class CalculoBalanceServiceTest extends TestCase
         $user = User::factory()->create();
         $viaje = Viaje::factory()->for($user, 'user')->create();
 
-        $ana = Participante::factory()->for($viaje)->create(['nombre' => 'Ana']);
+        $ana = Participante::factory()->for($viaje)->create(['nombre' => 'Ana', 'user_id' => $user->id]);
         $beto = Participante::factory()->for($viaje)->create(['nombre' => 'Beto']);
         $carla = Participante::factory()->for($viaje)->create(['nombre' => 'Carla']);
 
@@ -211,7 +211,7 @@ class CalculoBalanceServiceTest extends TestCase
         $user = User::factory()->create();
         $viaje = Viaje::factory()->for($user, 'user')->create();
 
-        $ana = Participante::factory()->for($viaje)->create(['nombre' => 'Ana']);
+        $ana = Participante::factory()->for($viaje)->create(['nombre' => 'Ana', 'user_id' => $user->id]);
         $beto = Participante::factory()->for($viaje)->create(['nombre' => 'Beto']);
         $carla = Participante::factory()->for($viaje)->create(['nombre' => 'Carla']);
 
@@ -227,9 +227,10 @@ class CalculoBalanceServiceTest extends TestCase
         $balancesPorNombre = collect($balances)->keyBy('nombre');
 
         $this->assertEquals(45.35, $g->fresh()->monto);
-        $this->assertEquals(15.35, $balancesPorNombre['Ana']['total_consumido']);
-        $this->assertEquals(15.00, $balancesPorNombre['Beto']['total_consumido']);
-        $this->assertEquals(15.00, $balancesPorNombre['Carla']['total_consumido']);
+        $this->assertEquals(15.00, $balancesPorNombre['Ana']['total_consumido']);
+        $consumosOtros = [$balancesPorNombre['Beto']['total_consumido'], $balancesPorNombre['Carla']['total_consumido']];
+        sort($consumosOtros);
+        $this->assertEquals([15.00, 15.50], $consumosOtros);
         $this->assertEquals(0.00, collect($balances)->sum('balance'));
 
         $desglose = $this->service->desgloseEfectivo($g->fresh(['participantes']), $viaje);
@@ -242,7 +243,7 @@ class CalculoBalanceServiceTest extends TestCase
         $user = User::factory()->create();
         $viaje = Viaje::factory()->for($user, 'user')->create();
 
-        $ana = Participante::factory()->for($viaje)->create(['nombre' => 'Ana']);
+        $ana = Participante::factory()->for($viaje)->create(['nombre' => 'Ana', 'user_id' => $user->id]);
         $beto = Participante::factory()->for($viaje)->create(['nombre' => 'Beto']);
         $carla = Participante::factory()->for($viaje)->create(['nombre' => 'Carla']);
 
@@ -257,8 +258,8 @@ class CalculoBalanceServiceTest extends TestCase
         $balances = $this->service->calcularBalances($viaje);
         $balancesPorNombre = collect($balances)->keyBy('nombre');
 
-        $this->assertEquals(3.00, $balancesPorNombre['Beto']['total_consumido']);
-        $this->assertEquals(3.50, $balancesPorNombre['Ana']['total_consumido']);
+        $this->assertEquals(3.00, $balancesPorNombre['Ana']['total_consumido']);
+        $this->assertEquals(3.50, $balancesPorNombre['Beto']['total_consumido']);
         $this->assertEquals(3.50, $balancesPorNombre['Carla']['total_consumido']);
 
         $suma = collect($balances)->sum('balance');
@@ -270,7 +271,7 @@ class CalculoBalanceServiceTest extends TestCase
         $user = User::factory()->create();
         $viaje = Viaje::factory()->for($user, 'user')->create();
 
-        $ana = Participante::factory()->for($viaje)->create(['nombre' => 'Ana']);
+        $ana = Participante::factory()->for($viaje)->create(['nombre' => 'Ana', 'user_id' => $user->id]);
         $beto = Participante::factory()->for($viaje)->create(['nombre' => 'Beto']);
 
         $g = Gasto::factory()->for($viaje)->create([
@@ -284,10 +285,10 @@ class CalculoBalanceServiceTest extends TestCase
         $balances = $this->service->calcularBalances($viaje);
         $balancesPorNombre = collect($balances)->keyBy('nombre');
 
-        $this->assertEquals(0.01, $balancesPorNombre['Ana']['total_consumido']);
-        $this->assertEquals(0.00, $balancesPorNombre['Ana']['balance']);
-        $this->assertEquals(0.00, $balancesPorNombre['Beto']['total_consumido']);
-        $this->assertEquals(0.00, $balancesPorNombre['Beto']['balance']);
+        $this->assertEquals(0.00, $balancesPorNombre['Ana']['total_consumido']);
+        $this->assertEquals(0.50, $balancesPorNombre['Beto']['total_consumido']);
+        $this->assertEquals(0.00, collect($balances)->sum('balance'));
+        $this->assertEquals(0.01, $g->fresh()->monto);
 
         $suma = collect($balances)->sum('balance');
         $this->assertEquals(0.00, $suma);
@@ -414,5 +415,95 @@ class CalculoBalanceServiceTest extends TestCase
 
         $suma = collect($balances)->sum('balance');
         $this->assertEquals(0.00, $suma);
+    }
+
+    public function test_gasto_55_40_anfitrion_y_un_participante(): void
+    {
+        $user = User::factory()->create();
+        $viaje = Viaje::factory()->for($user, 'user')->create();
+        $ana = Participante::factory()->for($viaje)->create(['nombre' => 'Ana', 'user_id' => $user->id]);
+        $beto = Participante::factory()->for($viaje)->create(['nombre' => 'Beto']);
+
+        $g = Gasto::factory()->for($viaje)->create([
+            'concepto' => 'Cena',
+            'monto' => 55.40,
+            'fecha' => '2026-09-01',
+            'pagador_id' => $ana->id,
+        ]);
+        $g->participantes()->sync([$ana->id, $beto->id]);
+
+        $balances = $this->service->calcularBalances($viaje);
+        $porNombre = collect($balances)->keyBy('nombre');
+
+        $this->assertEquals(27.50, $porNombre['Ana']['total_consumido']);
+        $this->assertEquals(28.00, $porNombre['Beto']['total_consumido']);
+        $this->assertEquals(55.40, $g->fresh()->monto);
+        $this->assertEquals(0.00, collect($balances)->sum('balance'));
+
+        $desglose = $this->service->desgloseEfectivo($g->fresh(['participantes']), $viaje->load('participantes', 'gastos.participantes'));
+        $this->assertEquals(55.40, $desglose['monto_original']);
+        $cuotas = collect($desglose['cuotas_efectivo'])->keyBy('nombre');
+        $this->assertEquals(27.50, $cuotas['Ana']['cuota_final']);
+        $this->assertEquals(28.00, $cuotas['Beto']['cuota_final']);
+    }
+
+    public function test_ajuste_va_a_quien_tiene_mayor_deuda_previa(): void
+    {
+        $user = User::factory()->create();
+        $viaje = Viaje::factory()->for($user, 'user')->create();
+        $ana = Participante::factory()->for($viaje)->create(['nombre' => 'Ana', 'user_id' => $user->id]);
+        $beto = Participante::factory()->for($viaje)->create(['nombre' => 'Beto']);
+        $carla = Participante::factory()->for($viaje)->create(['nombre' => 'Carla']);
+
+        $previo = Gasto::factory()->for($viaje)->create([
+            'concepto' => 'Taxi',
+            'monto' => 100.00,
+            'fecha' => '2026-09-01',
+            'pagador_id' => $ana->id,
+        ]);
+        $previo->participantes()->sync([$ana->id, $beto->id]);
+
+        $siguiente = Gasto::factory()->for($viaje)->create([
+            'concepto' => 'Snacks',
+            'monto' => 11.00,
+            'fecha' => '2026-09-02',
+            'pagador_id' => $ana->id,
+        ]);
+        $siguiente->participantes()->sync([$ana->id, $beto->id, $carla->id]);
+
+        $desglose = $this->service->desgloseEfectivo(
+            $siguiente->fresh(['participantes']),
+            $viaje->load(['participantes', 'gastos.participantes'])
+        );
+        $cuotas = collect($desglose['cuotas_efectivo'])->keyBy('nombre');
+
+        $this->assertEquals(3.50, $cuotas['Ana']['cuota_final']);
+        $this->assertEquals(4.00, $cuotas['Beto']['cuota_final']);
+        $this->assertEquals(3.50, $cuotas['Carla']['cuota_final']);
+    }
+
+    public function test_desglose_no_cambia_al_consultar_de_nuevo(): void
+    {
+        $user = User::factory()->create();
+        $viaje = Viaje::factory()->for($user, 'user')->create();
+        $ana = Participante::factory()->for($viaje)->create(['nombre' => 'Ana', 'user_id' => $user->id]);
+        $beto = Participante::factory()->for($viaje)->create(['nombre' => 'Beto']);
+        $carla = Participante::factory()->for($viaje)->create(['nombre' => 'Carla']);
+
+        $g = Gasto::factory()->for($viaje)->create([
+            'concepto' => 'Almuerzo',
+            'monto' => 11.00,
+            'fecha' => '2026-09-01',
+            'pagador_id' => $ana->id,
+        ]);
+        $g->participantes()->sync([$ana->id, $beto->id, $carla->id]);
+
+        $viaje->load(['participantes', 'gastos.participantes']);
+        $primero = $this->service->desgloseEfectivo($g->fresh(['participantes']), $viaje);
+        $segundo = $this->service->desgloseEfectivo($g->fresh(['participantes']), $viaje);
+
+        $this->assertSame($primero['cuotas_efectivo'], $segundo['cuotas_efectivo']);
+        $this->assertEquals(11.00, collect($primero['cuotas_efectivo'])->sum('cuota_final'));
+        $this->assertEquals(3.50, collect($primero['cuotas_efectivo'])->firstWhere('nombre', 'Ana')['cuota_final']);
     }
 }

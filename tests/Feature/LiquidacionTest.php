@@ -235,7 +235,7 @@ class LiquidacionTest extends TestCase
     {
         $user = User::factory()->create();
         $viaje = Viaje::factory()->for($user, 'user')->create();
-        $ana = Participante::factory()->for($viaje)->create(['nombre' => 'Ana']);
+        $ana = Participante::factory()->for($viaje)->create(['nombre' => 'Ana', 'user_id' => $user->id]);
         $diego = Participante::factory()->for($viaje)->create(['nombre' => 'Diego']);
 
         $gasto = Gasto::factory()->for($viaje)->create([
@@ -248,15 +248,15 @@ class LiquidacionTest extends TestCase
 
         $deuda = collect($this->actingAs($user)->getJson(route('viajes.liquidacion', $viaje))->json())->first();
 
-        $this->assertEquals(22.50, $deuda['monto_original']);
+        $this->assertEquals(23.00, $deuda['monto_original']);
 
         $this->actingAs($user)
             ->postJson(route('liquidaciones.pagos.store', $deuda['id']), ['monto' => 10.00])
             ->assertCreated()
             ->assertJsonFragment([
-                'monto_original' => 22.50,
+                'monto_original' => 23.00,
                 'monto_pagado' => 10.00,
-                'monto_pendiente' => 12.50,
+                'monto_pendiente' => 13.00,
                 'liquidada' => false,
             ]);
 

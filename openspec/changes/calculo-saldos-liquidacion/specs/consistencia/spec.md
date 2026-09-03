@@ -20,32 +20,47 @@ La suma algebraica de todos los balances de los participantes de un viaje MUST s
 
 ### Requirement: Ajuste automático a efectivo boliviano sin recargo manual
 
-El anfitrión MUST ingresar siempre el monto real del gasto; el sistema MUST NOT permitir agregar dinero extra a mano. El monto persistido SHALL permanecer igual al ingresado. Tras calcular la cuota teórica, el sistema SHALL aplicar el menor ajuste automático para que las cuotas de quienes deben se puedan pagar con efectivo boliviano (múltiplos de Bs 0,50; no se usan monedas de Bs 0,20 ni Bs 0,30). El pagador/anfitrión MUST NOT elegir el ajuste ni recibirlo cuando hay deudores. Si un deudor debe más que los demás, recibe primero las unidades extra de Bs 0,50. Si varios deben exactamente lo mismo, el ajuste se reparte entre ellos de forma determinística (por `participante_id`). La suma de cuotas finales MUST igualar el monto original. Gastos enteros ya existentes y liquidaciones parciales persistidas MUST seguir funcionando.
+El anfitrión/creador MUST ingresar el monto real; MUST NOT poder elegir ni editar el redondeo. El `monto` persistido SHALL permanecer igual. Toda cuota final de un gasto con 2+ beneficiarios MUST ser múltiplo de Bs 0,50. El anfitrión (participante con `user_id = viaje.user_id`), si está incluido, MUST redondear hacia abajo y MUST NOT recibir unidades extra. El sistema SHALL elegir automáticamente al no-anfitrión que asume el ajuste: (1) mayor deuda acumulada previa, (2) deuda pendiente más antigua, (3) sorteo determinístico `crc32(gasto.id|participante_id)` solo si (1) y (2) empatan. Consultar de nuevo el mismo gasto MUST devolver la misma asignación. Si la suma de cuotas de efectivo supera $M$ por el techo del hueco, esa diferencia se acredita al pagado del anfitrión para $\sum \mathrm{balances} = 0$. Liquidaciones completas y parciales MUST seguir funcionando. Gastos enteros tipo Samaipata MUST no cambiar.
 
-#### Scenario: División no exacta entre 3 (Bs. 100) — el ajuste no va al pagador
-- **DADO** un viaje con Ana, Beto y Carla, donde Ana paga `100.00` compartido entre los 3
-- **WHEN** el sistema calcula las cuotas
-- **THEN** Ana (pagadora) consume `33.00`, Beto y Carla (misma deuda) consumen `33.50` cada uno, la suma es `100.00`, y Ana no absorbe el sobrante
-
-#### Scenario: Gasto real Bs. 45,35 con varios deudores empatados
-- **DADO** un gasto de `45.35` pagado por Ana e incluido Ana, Beto y Carla
+#### Scenario: Anfitrión y un participante (Bs. 55,40)
+- **DADO** un gasto de `55.40` compartido por el anfitrión y otro participante
 - **WHEN** se calculan las cuotas
-- **THEN** el monto original sigue siendo `45.35`, Beto y Carla pagan `15.00` (efectivo), Ana queda con el residuo `15.35` porque ya desembolsó el monto real, y la suma de cuotas es `45.35`
+- **THEN** el anfitrión consume `27.50`, el otro `28.00`, el monto persistido sigue `55.40` y ambos finales son múltiplos de `0.50`
 
-#### Scenario: Un deudor debe más y recibe primero el ajuste de 0,50
-- **DADO** un gasto de `11.00` pagado por Ana entre Ana, Beto y Carla
-- **WHEN** se asignan las unidades extra de Bs 0,50
-- **THEN** un deudor (el de menor `id` entre Beto y Carla, que empatan) recibe `4.00` y el otro `3.50`; Ana consume `3.50`; suma `11.00`
+#### Scenario: Anfitrión y varios participantes
+- **DADO** un gasto compartido por anfitrión, A y B cuya teórica dejaría a A y B en `27.60`
+- **WHEN** se asigna el ajuste
+- **THEN** el anfitrión queda en `27.50` y uno de A o B asume `28.00`; el anfitrión no sube
+
+#### Scenario: 27,60 y 27,90 se convierten en efectivo
+- **DADO** cuotas teóricas de `27.60` o `27.90` para no-anfitriones
+- **WHEN** se aplica el redondeo
+- **THEN** el monto final de quien asume el ajuste es `28.00` (múltiplo de `0.50`), nunca `27.60` ni `27.90`
+
+#### Scenario: División no exacta entre 3 (Bs. 100) — el ajuste no va al anfitrión
+- **DADO** Ana (anfitriona) paga `100.00` con Beto y Carla, sin deudas previas
+- **WHEN** el sistema calcula las cuotas
+- **THEN** Ana consume `33.00`, Beto y Carla `33.50` cada uno, la suma es `100.00`
+
+#### Scenario: Un deudor con mayor deuda acumulada recibe el ajuste
+- **DADO** Beto debe más que Carla antes de un gasto que genera una unidad extra de `0.50`
+- **WHEN** se asigna el ajuste
+- **THEN** Beto recibe la unidad extra y el anfitrión no
+
+#### Scenario: Empate de deuda → gana la más antigua
+- **DADO** Beto y Carla con la misma deuda acumulada, y Beto lleva más tiempo debiendo
+- **WHEN** se asigna el ajuste
+- **THEN** Beto recibe el ajuste
+
+#### Scenario: Empate total → sorteo estable
+- **DADO** no-anfitriones empatados en deuda y antigüedad
+- **WHEN** se calcula el gasto dos veces
+- **THEN** el mismo participante recibe el ajuste ambas veces (semilla `gasto.id`)
 
 #### Scenario: Un solo participante
 - **DADO** Ana como única incluida en un gasto de `45.35` que ella pagó
 - **WHEN** se calcula el saldo
-- **THEN** consume `45.35`, balance `0.00` y no hay recargo inventado
-
-#### Scenario: Gasto mínimo de un centavo (Bs. 0.01)
-- **DADO** un gasto de `0.01` pagado por Ana entre Ana y Beto
-- **WHEN** el sistema procesa la división
-- **THEN** Ana consume `0.01`, Beto `0.00`, suma `0.01` y balances en `0.00`
+- **THEN** consume `45.35`, balance `0.00` y el monto original no cambia
 
 #### Scenario: Liquidación parcial no se rompe
 - **DADO** una deuda persistida con un abono parcial

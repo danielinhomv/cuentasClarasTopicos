@@ -46,10 +46,10 @@ El sistema SHALL calcular para cada participante de un viaje: el total de dinero
 
 El sistema SHALL exponer, junto al monto ingresado por el anfitrión, el desglose de cuotas finales tras el ajuste a Bs 0,50 y el importe de ajuste por participante. El formulario de alta/edición MUST NOT incluir un campo para cargar recargo.
 
-#### Scenario: Visualización de original y ajuste en Bs. 45,35
-- **DADO** un gasto de `45.35` con cuotas de efectivo distintas de la teórica
+#### Scenario: Visualización de original y ajuste en Bs. 55,40
+- **DADO** un gasto de `55.40` del anfitrión con otro participante
 - **WHEN** el usuario ve el detalle del viaje
-- **THEN** se muestra el monto original `45.35` y el ajuste aplicado por integrante, sin permitir editar el recargo
+- **THEN** se muestra el monto original `55.40` y cuotas `27.50` / `28.00`, sin permitir editar el recargo
 
 ### Requirement: Cálculo de saldos con participantes excluidos
 

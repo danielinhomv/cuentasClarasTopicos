@@ -51,3 +51,11 @@
 - [x] 8.2 Alcance: solo Service. Tipo: funcional (Casos de uso 4 y 5). Corregir `RegistroLiquidacionService::reconciliar` para actualizar, cerrar o eliminar pares que ya no están en el plan, y que `saldos` también sincronice. Verificar: al reconciliar un plan vacío se eliminan deudas sin pagos. Spec: recálculo al eliminar gasto.
 
 - [x] 8.3 Alcance: pruebas. Tipo: funcional. Extender `LiquidacionTest` y `RegistroLiquidacionServiceTest` con: crear→deuda→eliminar; deuda completa; deuda parcial entre dos gastos; pagos parciales; sin huérfanas; saldos consistentes. Verificar: esas suites pasan. Spec: escenarios de sincronización.
+
+## 9. Redondeo a Bs 0,50 que favorece al anfitrión
+
+- [x] 9.1 Alcance: documentación OpenSpec. Tipo: no funcional. Actualizar proposal, design, `consistencia/spec.md` y `saldos/spec.md` con piso del anfitrión, selección por deuda/antigüedad/sorteo estable y monto original intacto. Verificar: los artefactos reemplazan el desempate por `participante_id`. Spec: Ajuste automático a efectivo boliviano.
+
+- [x] 9.2 Alcance: solo Service. Tipo: funcional (Casos de uso 4 y 6). Corregir `AjusteEfectivoService` y `CalculoBalanceService` para usar anfitrión del viaje, ranking de deuda previa y semilla `gasto.id`. Verificar: 55,40 → 27,50 + 28,00; el anfitrión nunca sube; Samaipata no cambia. Spec: consistencia.
+
+- [x] 9.3 Alcance: pruebas. Tipo: funcional. Cubrir anfitrión+1, anfitrión+varios, 27,60/27,90, piso del anfitrión, mayor deuda, antigüedad, sorteo estable, exclusión del anfitrión, múltiplos de 0,50, suma, liquidación parcial y monto original. Verificar: las suites de ajuste, balance y liquidación pasan. Spec: consistencia y liquidación parcial.

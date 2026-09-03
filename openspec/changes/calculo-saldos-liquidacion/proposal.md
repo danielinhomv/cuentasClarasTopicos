@@ -5,7 +5,7 @@ El valor central y objetivo principal de Cuentas Claras radica en resolver matem
 ## What Changes
 
 - Creación del servicio de dominio `App\Services\CalculoBalanceService` encargado de calcular el balance neto de cada participante (Monto total pagado menos cuota parte de los gastos en los que participa).
-- Implementación del **ajuste automático a efectivo boliviano** (múltiplos de Bs 0,50): el anfitrión ingresa siempre el monto real; el sistema no permite cargar un recargo manual. Las cuotas de quienes deben se adaptan al efectivo disponible con el menor ajuste, sin asignar el sobrante al pagador/anfitrión cuando hay otros deudores. Se muestra el monto original y el ajuste aplicado.
+- Implementación del **ajuste automático a efectivo boliviano** (múltiplos de Bs 0,50): el anfitrión/creador del viaje ingresa el monto real y no puede cargar un recargo manual. Su cuota se redondea **hacia abajo**; nunca asume el ajuste. La diferencia se asigna automáticamente a un no-anfitrión según deuda acumulada, antigüedad de deuda y, solo si hay empate total, un sorteo determinístico anclado al `gasto.id`. El monto persistido no cambia.
 - Validación de la invariante matemática obligatoria: la suma de todos los balances netos de los participantes de un viaje MUST ser SIEMPRE exactamente igual a 0 (`sum(balances) == 0.00`).
 - Creación del servicio de dominio `App\Services\AlgoritmoLiquidacionService` que implementa un algoritmo voraz (*greedy matching*) para generar la lista óptima de transferencias (*quién le transfiere a quién y cuánto*) minimizando el número de transacciones.
 - Creación de `LiquidacionController` con endpoints estructurados para consultar:
@@ -43,11 +43,11 @@ Esta propuesta cubre explícitamente:
 
 - `saldos`: Cálculo de balances individuales por participante, cuota parte por gasto y total consumido/pagado.
 - `liquidacion`: Algoritmo de liquidación mínima de deudas, persistencia de deudas por par y registro de pagos parciales o completos.
-- `consistencia`: Garantía de la invariante matemática $\sum = 0$, ajuste a efectivo boliviano (Bs 0,50) sin recargo manual del anfitrión, y robustez ante casos borde.
+- `consistencia`: Garantía de $\sum = 0$, cuotas finales en múltiplos de Bs 0,50, anfitrión siempre hacia abajo y selección automática de quién asume el ajuste.
 
 ### Modified Capabilities
 
-- `liquidacion`: al mutar gastos, `reconciliar` sincroniza las deudas persistidas con el plan vigente (actualiza, cierra o elimina pares obsoletos) sin perder el historial de pagos del par.
+- `saldos` / `consistencia`: el redondeo a Bs 0,50 favorece siempre al anfitrión (piso) y penaliza a un no-anfitrión por deuda, antigüedad o sorteo estable; no se usa el `participante_id` como desempate colaborativo.
 
 ## Impact
 

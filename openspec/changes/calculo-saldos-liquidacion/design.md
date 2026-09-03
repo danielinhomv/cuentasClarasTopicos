@@ -10,7 +10,7 @@ Este diseño define la capa de lógica de negocio pura (Services) responsable de
 - Implementar `CalculoBalanceService` para computar consumos, totales pagados y saldos netos por participante.
 - Implementar `AlgoritmoLiquidacionService` con una estrategia voraz (*greedy matching*) que garantiza resolver todas las deudas con un máximo de $N - 1$ transferencias.
 - Garantizar la precisión monetaria absoluta convirtiendo todos los montos a **centavos enteros** durante los cálculos intermedios.
-- Adaptar las cuotas al efectivo boliviano (múltiplos de Bs 0,50) con el menor ajuste automático, sin que el anfitrión cargue un recargo ni se quede con el sobrante cuando hay deudores.
+- Adaptar las cuotas al efectivo boliviano (múltiplos de Bs 0,50): el anfitrión/creador siempre redondea hacia abajo y nunca recibe la penalización; el sistema elige automáticamente quién asume el ajuste.
 - Exponer los endpoints estructurados en `LiquidacionController` protegidos por autenticación y policies.
 - Validar matemáticamente los cálculos con pruebas unitarias y el caso oficial de Samaipata.
 
@@ -34,16 +34,23 @@ Al finalizar el cálculo, los centavos se transforman de vuelta a decimales con 
 $montoFinal = round($centavos / 100, 2);
 ```
 
-### 2. Algoritmo de División de Gastos y Absorción de Centavos
+### 2. Algoritmo de División de Gastos y Redondeo a Efectivo (Bs 0,50)
 
-Para cada gasto $G$ con monto $M$ (en centavos consolidados) y $K$ participantes beneficiarios:
+El **anfitrión** es el participante cuyo `user_id` coincide con `viaje.user_id` (creador del viaje), no necesariamente el pagador del gasto. Los gastos se procesan en orden `(fecha, id)` para que la deuda acumulada use solo gastos anteriores.
 
-1. **Unidad de efectivo:** $U = 50$ centavos (Bs 0,50). En Bolivia no se usan en la práctica monedas de Bs 0,20 ni Bs 0,30.
-2. **Cuota teórica:** $C_{base} = \text{intdiv}(M, K)$ (solo para ranking y para mostrar original vs ajuste).
-3. **Reparto en unidades de 50 centavos:** $Q = \text{intdiv}(M, U)$, $R_{<50} = M \bmod U$. Cada beneficiario recibe $\text{intdiv}(Q, K)$ unidades. Las $Q \bmod K$ unidades extra se asignan de a una, de forma determinística, a quienes **deben** (no pagadores), priorizando al que más debe; si empatan, se reparte en orden de `participante_id` (colaborativo, no aleatorio). El pagador/anfitrión no recibe esas unidades extra si hay al menos un deudor.
-4. **Residuo menor a 50 centavos:** si el pagador está incluido, se le asigna $R_{<50}$ (ya pagó el monto real en caja). Si no está incluido, el residuo se asigna al deudor de menor `id` para no inventar recargos. La suma de cuotas es exactamente $M$.
-5. **Balance individual:** $\text{balance} = \text{pagado\_centavos} - \text{consumo\_centavos}$. El `monto` persistido del gasto no cambia.
-6. **Garantía:** $\sum \text{consumos} = M$ y $\sum \text{balances} = 0$. Las liquidaciones parciales siguen usando deudas persistidas; el plan se recalcula desde balances brutos sin borrar abonos.
+Para cada gasto $G$ con monto persistido $M$ (centavos consolidados) y $K$ beneficiarios:
+
+1. **Unidad de efectivo:** $U = 50$ centavos. No deben quedar cuotas finales como 27,20 / 27,60 / 27,90.
+2. **Un solo beneficiario:** conserva $M$ exacto (aunque no sea múltiplo de 50).
+3. **Piso de todos:** cada beneficiario parte de $\mathrm{floor}_{50}(\mathrm{intdiv}(M, K))$. El anfitrión, si está incluido, se queda en ese piso y **nunca** recibe unidades extra.
+4. **Hueco:** $\mathrm{gap} = M - \sum \mathrm{pisos}$. Se crean $N = \lceil \mathrm{gap}/U \rceil$ unidades extra de 50 centavos (si $\mathrm{gap}=0$, ninguna). Así un resto de 40 céntimos se convierte en Bs 0,50 (ej. 55,40 → 27,50 + 28,00).
+5. **Quién asume el ajuste** (solo no-anfitriones, automático, sin campo manual):
+   1. Mayor **deuda acumulada** antes de este gasto ($\max(0, -\mathrm{balance})$).
+   2. Si empatan, la **deuda más antigua** (primera vez que el saldo corrió negativo y sigue debiendo).
+   3. Si siguen empatados, **sorteo determinístico** `crc32(gasto.id + "|" + participante_id)` — no usa `random()`, así consultar de nuevo no cambia el resultado. El sorteo no corre si (1) o (2) ya eligen a uno.
+6. Las $N$ unidades se reparte de a una, en ese orden (vuelta a empezar si hay más unidades que candidatos).
+7. Si $\sum \mathrm{cuotas} = S > M$ (porque se redondeó el hueco hacia arriba), se acredita $S-M$ al **pagado del anfitrión** (o del pagador si no hay anfitrión-participante) para conservar $\sum \mathrm{balances} = 0$. El `gastos.monto` no se modifica.
+8. Liquidaciones completas y parciales siguen reconciliando desde estos balances.
 
 ### 3. Algoritmo Voraz de Liquidación Mínima (Greedy Matching)
 
@@ -86,8 +93,7 @@ El servicio `AlgoritmoLiquidacionService` procesa la lista de balances de la sig
 ```
 
 - **`App\Services\AjusteEfectivoService`:**
-  - `public function repartir(int $montoCentavos, array $beneficiarioIds, int $pagadorId): array`
-  - Devuelve `participante_id => consumo_centavos` con ajuste a Bs 0,50.
+  - `repartir(monto, beneficiarios, anfitrionId, contextoDeuda, sorteoSeed)` → cuotas en centavos, todas múltiplo de 50 salvo el caso de un único beneficiario.
 - **`App\Services\CalculoBalanceService`:**
   - `public function calcularBalances(Viaje $viaje): array`
   - Retorna un array estructurado con `participante_id`, `nombre`, `total_pagado`, `total_consumido`, `balance`.

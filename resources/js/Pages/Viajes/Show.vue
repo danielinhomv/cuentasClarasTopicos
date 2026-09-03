@@ -419,6 +419,16 @@ const copyCode = () => {
                 </div>
 
                 <div class="flex flex-wrap gap-2.5">
+                    <a
+                        :href="route('viajes.exportar-pdf', viaje.id)"
+                        class="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-zinc-800/90 hover:bg-zinc-700/90 border border-zinc-700 hover:border-zinc-500 rounded-lg font-semibold text-xs text-zinc-200 uppercase tracking-widest shadow-sm hover:text-white focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 focus:ring-offset-zinc-900 transition-all duration-150 cursor-pointer"
+                    >
+                        <svg class="size-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                        </svg>
+                        <span>Exportar a PDF</span>
+                    </a>
+
                     <Link :href="route('viajes.edit', viaje.id)">
                         <SecondaryButton type="button" class="gap-1.5 text-xs py-2">
                             <svg class="size-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">

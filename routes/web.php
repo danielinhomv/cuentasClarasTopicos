@@ -4,6 +4,7 @@ use App\Http\Controllers\GastoController;
 use App\Http\Controllers\LiquidacionController;
 use App\Http\Controllers\ParticipanteController;
 use App\Http\Controllers\ViajeController;
+use App\Http\Controllers\ViajePdfController;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/viajes');
@@ -18,6 +19,7 @@ Route::middleware([
     Route::post('/viajes', [ViajeController::class, 'store'])->name('viajes.store');
     Route::post('/viajes/unirse', [ViajeController::class, 'unirse'])->name('viajes.unirse');
     Route::get('/viajes/{viaje}/bitacora', [ViajeController::class, 'bitacora'])->name('viajes.bitacora.index');
+    Route::get('/viajes/{viaje}/exportar-pdf', [ViajePdfController::class, 'exportar'])->name('viajes.exportar-pdf');
     Route::get('/viajes/{viaje}', [ViajeController::class, 'show'])->name('viajes.show');
     Route::get('/viajes/{viaje}/edit', [ViajeController::class, 'edit'])->name('viajes.edit');
     Route::put('/viajes/{viaje}', [ViajeController::class, 'update'])->name('viajes.update');
